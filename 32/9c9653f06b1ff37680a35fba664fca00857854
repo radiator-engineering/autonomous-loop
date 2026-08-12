@@ -1,0 +1,22 @@
+autonomous-loop/assets/loop-template.js
+  h_2e249d121a4557 100-114,286-287,296-313,318,344,379-380,382-383,385-405,409-426,880-904,1138-1145,1149-1157
+autonomous-loop/references/archetypes.md
+  h_2e249d121a4557 44-51
+autonomous-loop/references/atom-design.md
+  h_2e249d121a4557 177-180
+autonomous-loop/scripts/selfcheck_loops.mjs
+  h_2e249d121a4557 244,899-939
+autonomous-loop/scripts/selfcheck_preflight.mjs
+  h_2e249d121a4557 122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "329c9653f06b1ff37680a35fba664fca00857854",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
