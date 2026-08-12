@@ -174,8 +174,10 @@ climbs — so the stop predicate is a Goodhart defense, not only a cost control.
   **Self-enhancement** is the one the template's `TIER` map can express today: a different model
   family for the verifier (`kernel.md` §1).
 - **Diversity collapse** (`references/failure-modes.md` §5) needs *distinct mandates* — correctness / safety /
-  performance / spec. **Not implemented — §13**, and the ledger has no group field, so keep the
-  mandate split in your design notes and check its coverage yourself before launch.
+  performance / spec. **Implemented for the converger**: `MANDATES` is a required, distinct-checked knob,
+  one critic runs per mandate, and the driver stamps the mandate onto every atom, so the ledger does now
+  carry the group field. The other four archetypes still have no mandate split; for those, keep it in
+  your design notes and check the coverage yourself before launch.
 - **Red-team the verifier before the run.** Feed it a master-key token (a lone "Solution:", a
   flattering preamble) and a prompt injection inside the candidate; if either moves the verdict,
   harden it first.

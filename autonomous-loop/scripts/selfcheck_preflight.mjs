@@ -119,6 +119,7 @@ function fillTemplate(ledgerDir, src = TEMPLATE_SRC) {
     '<<LENSES>>': "['a','b']",
     '<<INVARIANTS>>': "['inv1','inv2']",
     '<<MANDATES>>': "['correctness','performance']",
+    '<<SPEC>>': 'selfcheck-fixture-spec.md',
   }
   let out = src
   for (const [k, v] of Object.entries(subs)) out = out.split(k).join(v)

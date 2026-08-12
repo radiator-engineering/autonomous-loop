@@ -241,6 +241,7 @@ function harness(scn) {
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
             handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound }
     }
+    if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize') return scn.finalize ? scn.finalize() : { finalized: true }
     return 'ok'
   }
@@ -895,6 +896,47 @@ const SCENARIOS = {
                      verify: id => (id === 'r1' ? fail(id, 'major') : pass(id)),
                      expect: (r, h) => r.converged === false &&
                        /^Fix criterion r1/.test((h.prompts['work:r1'] || [])[0] || '') },
+
+    // ---- re-anchor, coherence, keep-best -----------------------------------------------------
+    // RE-ANCHOR: every agent that judges or edits is pointed at the spec PATH, not at the driver's
+    // memory of it. A driver that paraphrases the bar once and re-injects its own paraphrase cannot
+    // notice it has drifted, because the paraphrase always matches the spec — itself. Checked on the
+    // critic AND the verifier: two judges anchored differently is two bars, and the run converges on
+    // whichever is looser.
+    reAnchored:    { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => /RE-READ THE FROZEN SPEC AT /.test((h.prompts['critique:correctness'] || [])[0] || '') &&
+                       /frozen spec at /.test((h.prompts['verify:r1'] || [])[0] || '') },
+    // COHERENCE runs once per round, at the escalate tier, when more than one region was edited.
+    // Parallel workers each edit blind to the others, so only a whole-artifact owner can see a break
+    // that exists BETWEEN regions — per-item verifiers are scoped to their region by construction.
+    coherenceRuns: { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.counts['coherence'] || 0) >= 1 && h.models['coherence'] === 'opus' },
+    // ...and NOT when there is nothing to reconcile. One edited region cannot break another one, so
+    // paying an opus agent to look is pure cost. The guard is `worked.length < 2`.
+    coherenceSkipped: { critique: () => CRIT(['fail']), verify: id => pass(id),
+                     expect: (r, h) => (h.counts['coherence'] || 0) === 0 && r.converged === true },
+    // A coherence crash is deliberately NOT a gap. The pass is a repair, not a mandate: it claims no
+    // criterion is met, so a failed reconciliation leaves the round exactly as unreconciled as never
+    // running it, and the per-item verdicts still decide. If this raised a gap, a flaky reconciler
+    // could pin an otherwise-clean run to `blocked` — a repair step vetoing verified work.
+    coherenceCrash: { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     coherence: () => null,
+                     expect: r => r.converged === true && r.status === 'converged' },
+    // KEEP-BEST + REGRESSION FEED-FORWARD. r1 passes in round 1, then fails its re-measure: it loses
+    // credit (correct — a regressed criterion is not still passing), so the composite FALLS. The run
+    // must remember its peak rather than report its last number, name the criterion that fell, and
+    // put it in front of the panel next round. `regressed` holds only ids that WERE passing, so an
+    // ordinary first-time failure never lands there.
+    // r3 fails throughout, which is what keeps the run alive past round 1 — an all-pass round converges
+    // immediately and a criterion that is never re-measured can never be seen to regress. The first
+    // version of this scenario had exactly that hole and passed round 1 with nothing to observe.
+    keepBest:      { critique: n => (n === 1 ? CRIT(['pass', 'pass', 'fail']) : CRIT(['fail', 'pass', 'fail'])),
+                     verify: (() => { let r1 = 0
+                       return id => (id === 'r3' ? fail(id, 'major')
+                                   : id === 'r1' ? (++r1 > 1 ? fail(id, 'major') : pass(id))
+                                   : pass(id)) })(),
+                     expect: (r, h) => r.best > r.composite && r.bestRound >= 1 && r.regressed.includes('r1') &&
+                       (h.prompts['critique:correctness'] || []).some(p => /REGRESSIONS FIRST/.test(p) && /r1/.test(p)) },
   },
 }
 

@@ -41,10 +41,14 @@ The frozen Bar, the rubric-design guide, the partition generator and the failure
 live here now — `references/rubric-design.md`, `references/partition.md`, `scripts/gen_partition.py`,
 `references/failure-modes.md` — absorbed when this skill superseded the separate converger skill.
 
-KNOWN GAP, recorded rather than glossed: the DRIVER's converger is still thinner than those documents
-describe. Its critic panel is a single agent, and it has no per-round re-anchor, no whole-artifact
-coherence pass and no keep-best regression guard. Design against the documents; check the driver
-before you lean on a mechanism they name.
+The driver implements them. `MANDATES` fans out one fresh-context critic per mandate and the driver
+merges their rubrics, fail-wins; `SPEC` is a path every critic, worker and verifier re-reads verbatim
+each round rather than a bar the driver paraphrases once; `MODES.converger.coherence` is a
+single-owner pass over the whole artifact between WORK and VERIFY; and the driver keeps a high-water
+composite plus the list of criteria that lost credit, feeding those to the next round's panel first.
+
+What it still does NOT have, stated rather than implied: order-swap and length-neutral judging
+(`references/failure-modes.md` §3), which needs machinery this driver lacks — design around it.
 
 ---
 

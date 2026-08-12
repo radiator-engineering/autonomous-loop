@@ -97,11 +97,21 @@ const RUN_ID = '<<RUN_ID>>'               // every fill marker lives ABOVE the k
                                           // is the property the launch gate checks. Never inline one below.
 const LENSES = <<LENSES>>                 // saturator: distinct search lenses, e.g. ['by-file','by-pattern']
 const INVARIANTS = <<INVARIANTS>>         // sentinel: invariants to hold, e.g. ['tests green','p95<200ms']
-const MANDATES = <<MANDATES>>             // converger: the critic panel's DISTINCT mandates, e.g.
-                                          // ['correctness','spec-compliance','performance','readability'].
-                                          // One agent asked to "critique this" is not a panel; N copies
-                                          // of it are not either. The useful split is artifact-specific,
-                                          // which is why it is a knob — that they DIFFER is not optional.
+const MANDATES = <<MANDATES>>             // converger: the critic panel's DISTINCT mandates, written
+                                          // `key: the brief`. The key names the critic in labels and on
+                                          // the atom; everything after the first colon is interpolated
+                                          // into that critic's prompt, so write a real brief:
+                                          //   ['spec: every acceptance criterion, cite the evidence',
+                                          //    'perf: measured regressions only, cite the number']
+                                          // A bare word is legal and weak — "correctness" tells a critic
+                                          // almost nothing, and N vague critics are one critic N times.
+                                          // The useful split is artifact-specific, which is why this is a
+                                          // knob; that they DIFFER is not optional.
+const SPEC = '<<SPEC>>'                   // converger: path to the FROZEN spec — the Bar, in writing.
+                                          // Re-read from this path by every critic, every round, rather
+                                          // than summarized into the driver once: a bar the driver
+                                          // paraphrases is a bar that drifts, and drift is invisible
+                                          // because the paraphrase always looks like the spec.
 
 // Model tier map (balanced default; quality-first shifts each up one tier). This lives in Config,
 // above the hashed regions, because it is the ONE thing below it that a filled driver is SUPPOSED to
@@ -273,7 +283,8 @@ const MODES = {
   // converge the run unless a separate verifier agrees.
   converger: {
     doneStatus: 'converged',
-    async init(state) { state.total = 0; state.composite = 0; state.passing = new Set(); state.rubric = null },
+    async init(state) { state.total = 0; state.composite = 0; state.passing = new Set(); state.rubric = null
+                        state.best = 0; state.bestRound = 0; state.regressed = new Set() },
     async frontier(state) {
       // A PANEL — one fresh-context critic per mandate, in parallel, exactly like the saturator's
       // lenses and for the same reason. `references/failure-modes.md` §5: N critics with the same brief
@@ -282,14 +293,29 @@ const MODES = {
       // mandate from the loop variable so a critic can neither claim another's nor invent a sixth.
       const reports = await parallel(MANDATES.map(mandate => () =>
         agent(
-          `You are the ${mandate} critic on ${SOURCE}, judged against the frozen spec. Report ONLY ` +
-          `criteria inside your own mandate — another critic owns the rest, and duplicating theirs ` +
-          `costs the panel the coverage it exists for. Return the rubric for YOUR mandate: ` +
+          // RE-ANCHOR. The spec is named by PATH and re-read by the critic every round, never carried
+          // in the driver as a summary. A driver that paraphrases the bar once and re-injects its own
+          // paraphrase forever cannot detect that it has drifted, because the paraphrase always
+          // matches the spec — itself. Reading the file also makes a mid-run edit to the spec take
+          // effect at the next round, which is how a checkpointed run changes its goal.
+          `RE-READ THE FROZEN SPEC AT ${SPEC} VERBATIM before judging anything; it is the bar, and it ` +
+          `outranks anything you remember from earlier rounds. ` +
+          // REGRESSIONS FIRST. A criterion that passed and stopped passing is worth more attention than
+          // one that never passed: something the loop already did broke it, so it is evidence about the
+          // run's own edits rather than about the artifact's backlog. The list is the DRIVER's, built
+          // from verdicts, so no critic can quietly drop an inconvenient regression by not mentioning it.
+          (state.regressed.size
+            ? `REGRESSIONS FIRST — these criteria PASSED an independent re-measure in an earlier round ` +
+              `and no longer do: ${[...state.regressed].join(', ')}. Judge them before anything else and ` +
+              `say what changed. ` : '') +
+          `You are the "${mandateKey(mandate)}" critic on ${SOURCE}. Your mandate: ${mandateBrief(mandate)}. ` +
+          `Report ONLY criteria inside that mandate — another critic owns the rest, and duplicating ` +
+          `theirs costs the panel the coverage it exists for. Return the rubric for YOUR mandate: ` +
           `{total, criteria:[{id, region, status:"pass"|"fail", fix}]} where total = criteria.length and ` +
           `fix is the concrete change for a failing criterion (omit for a passing one). Reuse the ` +
           `rubric's own criterion ids VERBATIM every round — every counter keys on them, so a re-worded ` +
           `id is discarded as unverified rather than treated as a new criterion.`,
-          { ...TIER.verify, phase: 'Frontier', label: `critique:${mandate}`, schema: CRITERIA_SCHEMA })))
+          { ...TIER.verify, phase: 'Frontier', label: `critique:${mandateKey(mandate)}`, schema: CRITERIA_SCHEMA })))
       // A critic that crashed judged nothing — it did not find nothing. Dropped silently (the tempting
       // `.filter(Boolean)`), a round in which every critic died looks like a clean all-pass rubric: no
       // criterion fails, nothing is blocked, nothing is unverified, so the frontier is dry, the plateau
@@ -315,7 +341,7 @@ const MODES = {
           // failure through whichever critic happened to answer second.
           if (!prev || (prev.status === 'pass' && c.status === 'fail')) {
             merged.set(c.id, { id: c.id, region: c.region, fix: c.fix || prev?.fix || '',
-                               status: c.status, mandate: MANDATES[i] })
+                               status: c.status, mandate: mandateKey(MANDATES[i]) })
           }
         }
       })
@@ -350,16 +376,54 @@ const MODES = {
       return items
     },
     workerPrompt: (item) => item.proposed === 'fail'
-      ? `Fix criterion ${item.id} in region ${item.region}: ${item.fix}. Edit only this region.`
+      ? `Fix criterion ${item.id} in region ${item.region}: ${item.fix}. Edit only this region. ` +
+        `The frozen spec at ${SPEC} is the bar — read it; do not infer it from the fix text.`
       : `Criterion ${item.id} (region ${item.region}) is reported passing. Make NO edit; return "noop".`,
+    // The verifier re-anchors on the SAME path as the panel. A verifier judging against its own idea
+    // of the bar is a second bar, and the run would converge on whichever of the two is looser.
     verifyPrompt: (item) => `Independently re-measure criterion ${item.id} in region ${item.region} ` +
-      `against the frozen spec. Pass ONLY on a concrete grounded signal (a test, measurement, or diff). ` +
-      `A disqualifying failure is severity=blocker. Cite evidence.`,
+      `against the frozen spec at ${SPEC}, re-read verbatim. Pass ONLY on a concrete grounded signal ` +
+      `(a test, measurement, or diff). A disqualifying failure is severity=blocker. Cite evidence.`,
+    // Single-owner reconciliation over the whole artifact — see the kernel's step 2b for why it runs
+    // here rather than after verify. One agent, at the escalate tier, because judging whether an
+    // artifact hangs together is the hardest read in the round and the cheapest place to be wrong.
+    // It edits only what the parallel workers broke BETWEEN regions; it may not fix criteria, or it
+    // becomes a second builder whose work nothing independently verifies.
+    async coherence(state, worked) {
+      if (worked.length < 2) return   // one region edited, or none: nothing to reconcile
+      await agent(
+        `Read the ENTIRE artifact at ${SOURCE} and the frozen spec at ${SPEC}, verbatim. Parallel ` +
+        `workers just edited these disjoint regions this round: ` +
+        `${worked.map(w => w.item.region || w.item.id).join(', ')}. Each edit was made without sight ` +
+        `of the others. Reconcile them: fix breaks that exist only BETWEEN regions — a shared helper ` +
+        `changed under another region, duplicated logic, an interface renamed on one side, imports or ` +
+        `types that no longer line up. Do NOT fix a criterion, and do not touch anything that is not a ` +
+        `cross-region break: a separate verifier re-measures every criterion after you, and work you ` +
+        `do inside a region is work nothing independently checks. Return a one-line summary of what ` +
+        `you reconciled, or "none".`,
+        { ...TIER.escalate, phase: 'Coherence', label: 'coherence' })
+    },
     key: (item) => item.id,
     countsAsProgress: (v, state, key) => !state.passing.has(key),   // count each criterion once
     resolve(state, item) { state.passing.add(item.id) },
-    retry(state, item) { state.passing.delete(item.id) },           // a failed/regressed re-measure loses credit
-    tally(state) { state.composite = state.total > 0 ? state.passing.size / state.total : 0 },
+    // A failed re-measure loses credit. `Set.delete` returns true only if the id WAS passing, which is
+    // exactly the definition of a regression — a criterion failing for the first time is not one, and
+    // conflating the two would fill the regression list with ordinary open work.
+    retry(state, item) { if (state.passing.delete(item.id)) state.regressed.add(item.id) },
+    // KEEP-BEST. The composite can fall — a criterion whose re-measure fails loses its credit, which is
+    // correct, because a criterion that regressed is not still passing. What must not happen is the
+    // fall going unrecorded, leaving the run to report its LAST number as though it were its best. The
+    // high-water mark and the round that set it are kept here, in the driver, from counted atoms.
+    //
+    // Deliberately NOT wired to the stop predicate. gauntlet's converger plateaued on
+    // `composite <= best + EPS`; this kernel plateaus on `dry` — rounds that confirmed no NEW atom —
+    // which is the stronger test, because a run can climb the composite by re-confirming atoms it had
+    // already counted and a delta-based plateau would read that as progress. Two mechanisms for one
+    // job is how they drift apart, so this one records and the other decides.
+    tally(state) {
+      state.composite = state.total > 0 ? state.passing.size / state.total : 0
+      if (state.composite > state.best) { state.best = state.composite; state.bestRound = state.round }
+    },
     progress: (state) => state.composite,
     stop(state) {
       // Two ways to end: the bar, or a PLATEAU — DRY_ROUNDS rounds that confirmed no new criterion.
@@ -813,6 +877,31 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
       .then(out => ({ item, out }))
   ))
 
+  // 2b. COHERENCE: an OPTIONAL single-owner pass over the WHOLE artifact, before anything is verified.
+  //     Workers edit disjoint regions in parallel and each one can be locally right while the artifact
+  //     as a whole stops hanging together — a shared helper changed under one region's feet, two
+  //     regions solving the same problem twice, an interface renamed on one side. Per-region verifying
+  //     cannot see that by construction: every verifier is scoped to the region it was given, so a
+  //     globally incoherent artifact passes region by region.
+  //
+  //     It runs BEFORE verify so the verifiers judge the reconciled artifact rather than the raw merge
+  //     of parallel edits — otherwise the pass fixes things that were already recorded as passing and
+  //     the ledger describes an artifact that no longer exists.
+  //
+  //     Optional by design: only an archetype whose workers EDIT ONE SHARED ARTIFACT needs it. A
+  //     saturator's finders write nothing and an exhauster's items are independent by construction, so
+  //     for them this is a paid agent that reconciles nothing. `if (mode.coherence)` rather than a
+  //     no-op default, so that skipping it is a property of the archetype and not a silent omission.
+  //
+  //     A crash here is NOT a gap. The pass is a repair, not a mandate: nothing has claimed a criterion
+  //     is met, so a failed reconciliation leaves the round exactly as unreconciled as not running it
+  //     would have, and the per-item verdicts still decide everything. Raising a gap would let a flaky
+  //     reconciler pin an otherwise-clean run to `blocked`.
+  if (mode.coherence) {
+    phase('Coherence')
+    await mode.coherence(state, worked.filter(w => w != null && w.out != null))
+  }
+
   // 3. VERIFY: a DIFFERENT agent checks each worker's output against the item's done-criterion.
   //    FAIL-CLOSED: a crashed worker, a crashed verifier, and a verdict that came back unreadable
   //    (see `usable`) are all NOT a pass.
@@ -1046,9 +1135,26 @@ return {
   confirmed: state.confirmed.length, blocked: openBlockers(state).length,
   finalized,   // the run ended; did the BOARD find out? false ⇒ progress.json/runs.jsonl/HANDOFF are stale
   history: state.history,
+  // KEEP-BEST, surfaced. A high-water mark kept only in `state` is a number nobody reads: the run
+  // would still report its LAST composite as though it were its best, which is the exact reading
+  // keep-best exists to prevent. `best < composite` is impossible; `best > composite` means the run
+  // ended below its own peak and the regressed list says which criteria took it there.
+  ...(MODE === 'converger'
+    ? { composite: state.composite, best: state.best, bestRound: state.bestRound,
+        regressed: [...state.regressed] }
+    : {}),
 }
 
 // ---- shared helpers (hoisted) -------------------------------------------------------------
+// A MANDATE is written `key: the brief`. The key is the short name — it labels the agent and is
+// stamped on the atom; the brief is what the critic is actually told. A mandate with no colon is its
+// own key and its own brief, which is legal and weak.
+//
+// These are function DECLARATIONS on purpose. The round loop runs at module top level, above this
+// block, and declarations hoist while `const` does not — a `const VERDICT_KEYS` placed down here once
+// crashed fifteen scenarios with "cannot access before initialization".
+function mandateKey(m) { const i = String(m).indexOf(':'); return (i < 0 ? String(m) : String(m).slice(0, i)).trim() }
+function mandateBrief(m) { const i = String(m).indexOf(':'); return (i < 0 ? String(m) : String(m).slice(i + 1)).trim() }
 // The verdict is the only thing that can advance an atom, so its SHAPE is load-bearing and a
 // truthiness test is not a shape check. `{}` passes one, and then `v.pass` is undefined and the else
 // branch records the atom as genuinely REFUTED — a crashed verifier read as an adjudication, and a
