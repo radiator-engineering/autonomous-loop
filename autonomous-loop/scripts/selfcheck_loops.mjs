@@ -937,6 +937,23 @@ const SCENARIOS = {
                                    : pass(id)) })(),
                      expect: (r, h) => r.best > r.composite && r.bestRound >= 1 && r.regressed.includes('r1') &&
                        (h.prompts['critique:correctness'] || []).some(p => /REGRESSIONS FIRST/.test(p) && /r1/.test(p)) },
+    // A DEAD PANEL MUST NOT LAUNDER A STUCK CRITERION. Ported from the retired converger skill's
+    // harness, which is the only invariant of its 18 that no scenario here already covered under
+    // another name. r1 fails its re-measure every round, so its streak should reach STUCK_AFTER and
+    // change its prompt. On one middle round the whole panel dies, so r1 is not dispatched at all —
+    // and the question is whether the round it spent missing RESETS the streak. It must not: `fails`
+    // is cleared by a passing verdict, and a round with no verdict is not a passing one. If absence
+    // reset it, an intermittently-crashing critic would hold an item permanently below the threshold
+    // and it would never escalate — a stuck item hidden by the thing that failed to look at it.
+    // The round budget is what makes this discriminating rather than decorative. r1 fails every round
+    // it is dispatched, and the panel dies on round 3 so it is not dispatched then. Holding the streak:
+    // failures land on rounds 1, 2, 4 and the directive fires on round 5. Resetting on the missing
+    // round: the count restarts and the directive could not fire before round 7. The cap sits at 6, so
+    // the two readings give different answers instead of the same one a round apart.
+    gapHoldsStreak: { dryRounds: '9', maxRounds: String(STUCK_AFTER + 3),
+                     critique: n => (n === 3 ? null : CRIT(['fail', 'pass', 'pass'])),
+                     verify: id => (id === 'r1' ? fail(id, 'major') : pass(id)),
+                     expect: (r, h) => (h.prompts['work:r1'] || []).some(p => p.includes('STUCK:')) },
   },
 }
 
