@@ -1,0 +1,24 @@
+autonomous-loop/references/failure-modes.md
+  h_2e249d121a4557 1-140
+autonomous-loop/references/partition.md
+  h_2e249d121a4557 1-70
+autonomous-loop/references/rubric-design.md
+  h_2e249d121a4557 1-151
+autonomous-loop/scripts/gen_partition.py
+  h_2e249d121a4557 1-179
+autonomous-loop/scripts/lock_prompts.py
+  h_2e249d121a4557 1-100
+autonomous-loop/scripts/selfcheck_docs.mjs
+  h_2e249d121a4557 47-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "64f10a8d87bdef26d2270afc5c1bdd719367a577",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
