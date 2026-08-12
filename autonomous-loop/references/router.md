@@ -33,7 +33,7 @@ Walk the decision tree. It is mechanical:
 
 ```
 Is the work a SINGLE artifact being improved toward a quality target?
-  └─ yes → CONVERGER   (and if it's pure quality-vs-reference, hand to the gauntlet-loop skill)
+  └─ yes → CONVERGER   (pure quality-vs-reference is the converger's core case, not a hand-off)
 Is there a KNOWN, enumerable list of work items?
   └─ yes → EXHAUSTER
 Are you SEARCHING for all instances of something whose count is unknown?

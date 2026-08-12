@@ -64,4 +64,4 @@ Default to #1 whenever `Workflow` is available — the isolation, budget, and re
 the template is built for it. Drop to #2 only when the tool is absent. Reach for #3 only when the
 user explicitly wants a committed, re-runnable artifact. Whichever you pick, the observability
 requirement is unchanged: a live `progress.json` plus per-round artifacts (`observability` in the
-gauntlet-loop skill, or the archetype-specific "surface" note in `archetypes.md`).
+`references/observability.md`, or the archetype-specific "surface" note in `archetypes.md`).

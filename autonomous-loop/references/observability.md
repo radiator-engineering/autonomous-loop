@@ -215,8 +215,8 @@ over time, which is what makes rounds comparable — the converger's point, not 
 
 For the bottom three, one shared framing spec across unrelated items is meaningless: round 1's
 finding is not a BEFORE for round 7's. Shoot each item in the framing that resolves *it*, and write
-`framing.json` only for a measurement you repeat. The gauntlet-loop skill assumes the converger row
-throughout.
+`framing.json` only for a measurement you repeat. The converger row is the one this guidance was
+first written for, and it is still the row it fits best.
 
 Whatever the target, the hero must be **an image or a video** — a frame battery, a screenshot, a
 flamegraph, a plotted benchmark, a rendered diff captured as an image. A benchmark table, a raw diff,

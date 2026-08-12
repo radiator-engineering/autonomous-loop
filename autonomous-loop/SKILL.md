@@ -10,16 +10,16 @@ description: >-
   place that does X', 'audit the codebase for Y', 'research this question end to end', 'keep this
   healthy / watch for regressions', 'fan out over these tickets and route each to its own loop' - or
   when they are unsure which loop fits and want the highest-leverage one chosen. It routes to the
-  right shape, then builds a counted, fail-closed, self-checkable driver. For pure
-  quality-convergence against a concrete reference, prefer the gauntlet-loop skill.
+  right shape, then builds a counted, fail-closed, self-checkable driver. Covers pure
+  quality-convergence against a concrete reference as well as open-ended search.
 ---
 
 # Autonomous Loop
 
 An autonomous loop is how you point Claude at a task too big for one context and trust the result:
 it spends many fresh-context agents against a task, and a thin deterministic driver decides what to
-work on next and when to stop. This skill is the generic method. The `gauntlet-loop` skill is one
-instance of it (the converger); this skill covers all five and picks the right one for you.
+work on next and when to stop. This skill is the generic method: it covers all five loop shapes and
+picks the right one for you.
 
 The power is not "an agent trying harder for longer." It is two things, and every loop here keeps
 both or it fails the way ungrounded loops always fail — drifting, gaming its own judgment, and
@@ -110,10 +110,10 @@ short version:
    and how it's verified, what you're deferring, and the sequence if several loops are needed.
    Confirm it, then build.
 
-If the task is pure quality-convergence against a concrete reference ("make this match that"), hand
-off to the **`gauntlet-loop`** skill — it is the converger with the full treatment (frozen bar,
-rubric design, partition, live workbench). This skill's converger mode is the same doctrine in
-brief, for when you're routing among shapes and land on convergence.
+Pure quality-convergence against a concrete reference ("make this match that") is the **converger**,
+and it is handled here: the frozen bar, the rubric-design guide (`references/rubric-design.md`), the
+partition model and its generator, and the live workbench. Read `references/archetypes.md` for the
+current state of the driver's converger before relying on a specific mechanism.
 
 ## Step 2 — The shared kernel (non-negotiable in every loop)
 
@@ -347,7 +347,6 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
     `BLOCKER_PATIENCE`th standstill round. Those rounds need not be consecutive — a clean round in
     between holds the count rather than restarting it, or a blocker that clears and reopens on
     alternate rounds would hold patience open forever without ever confirming anything. The
-    gauntlet-loop template counts the identical way, down to the field name (`stall`).
     A numeric cap that fires is a planned stop (`capped`, unreachable when the cap is null);
     an unbounded run that reaches `RUNAWAY_BACKSTOP` stops `runaway_backstop` — a safety rail, not a
     plan: reaching it is recorded as `hitBackstop` and read as a defect signal, never a finish.
@@ -400,4 +399,6 @@ More agents is not more quality past the point of coverage.
 | `references/archetypes.md` | Each archetype's frontier, stop predicate and worked example |
 | `references/observability.md` | The ledger and board contract: `progress.json`, `hero`, `runs.jsonl`, captures, pruning, triage |
 | `references/substrates.md` | Dynamic Workflow vs in-session fan-out vs a committed CI harness |
-| the **gauntlet-loop** skill | Pure quality-convergence against a concrete reference: frozen bar, rubric design, partition tooling |
+| `references/rubric-design.md` | Designing the converger's rubric — the make-or-break ingredient |
+| `references/partition.md` | Splitting an artifact so parallel workers don't collide |
+| `references/failure-modes.md` | The guardrails, with the mechanism and evidence for each |

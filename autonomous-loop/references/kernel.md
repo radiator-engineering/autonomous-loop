@@ -3,7 +3,6 @@
 The frontier and the stop predicate change per archetype (`archetypes.md`). Everything else is the
 same, and *this* is where correctness lives. The kernel is seven properties. Each maps to a
 documented way self-improvement loops fail; this file states the general form and stands on its own.
-If the sibling `gauntlet-loop` skill is installed alongside this one, its
 `references/failure-modes.md` has the research citations and the converger-specific mechanism.
 Treat these as non-negotiable — a loop missing any one of them fails the way ungrounded loops
 always fail.

@@ -37,9 +37,14 @@ slot and names what would be needed, rather than leaving it empty.
 - **Self-check invariant:** a blocker open at composite 0.95 still reports `blocked`, never
   `converged` — a critical failure can't be averaged away by passing minors.
 
-This mode is deliberately thin here. For real convergence work use the **`gauntlet-loop`** skill: it
-adds the frozen Bar, the rubric-design guide, the partition generator, the coherence/synthesis
-passes, and the live workbench. Route to convergence here; execute it there.
+The frozen Bar, the rubric-design guide, the partition generator and the failure-mode evidence all
+live here now — `references/rubric-design.md`, `references/partition.md`, `scripts/gen_partition.py`,
+`references/failure-modes.md` — absorbed when this skill superseded the separate converger skill.
+
+KNOWN GAP, recorded rather than glossed: the DRIVER's converger is still thinner than those documents
+describe. Its critic panel is a single agent, and it has no per-round re-anchor, no whole-artifact
+coherence pass and no keep-best regression guard. Design against the documents; check the driver
+before you lean on a mechanism they name.
 
 ---
 
@@ -92,7 +97,7 @@ as a blocked item instead of a latent bug shipped to production.
   clear, and dry rounds are counted over *new* findings, not over that re-offer.
 
 There is no builder in a saturator — the finder *is* the worker and the verifier is the adversarial
-confirmer. This is the gauntlet's critic panel with the build step removed, which is why most of the
+confirmer. This is the converger's critic panel with the build step removed, which is why most of the
 kernel transfers unchanged.
 
 ---
@@ -170,7 +175,7 @@ a known board of tickets. A ticket's work need not be one edit; it can be its ow
 so the router runs **per ticket**:
 
 - "fix this bug" → a leaf task (one worker, one verifier);
-- "make this page hit p95 < X" → an inner **converger** (a gauntlet);
+- "make this page hit p95 < X" → an inner **converger**;
 - "find every place we leak PII" → an inner **saturator**;
 - "why did latency regress?" → an inner **explorer**.
 

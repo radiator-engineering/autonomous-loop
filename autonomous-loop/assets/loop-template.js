@@ -75,7 +75,7 @@ const MAX_RETRIES = <<MAX_RETRIES>>       // exhauster: retries before an item i
 const STUCK_AFTER = 3                     // consecutive VERIFIED failures on ONE item before its prompt changes
 const BLOCKER_PATIENCE = 3                // rounds that are BOTH stuck (a blocker or an unverified gap open) and
                                           // unproductive (`everConfirmed` did not grow) ⇒ `blocked`. Same counter,
-                                          // same reset rule and same field name as the gauntlet-loop template.
+                                          // same reset rule and same field name it has always had (`stall`).
 const BATCH = <<BATCH>>                   // max work items pulled from the frontier per round
 const RESERVE = 50_000                    // stop before the budget is fully drained
 const LEDGER_DIR = '<<LEDGER_DIR>>'       // ephemeral run dir served by the workbench
@@ -229,8 +229,9 @@ const VIOLATIONS_SCHEMA  = { type: 'object', required: ['violations'], propertie
 //   inconclusive(state) -> bool    optional: this stop was legitimate but NOT positive ⇒ `inconclusive`
 //   doneStatus                     the status string for a positive finish
 const MODES = {
-  // CONVERGER — drive ONE artifact to a bar. Thin here; use the gauntlet-loop skill for the full
-  // treatment (frozen bar, rubric design, partition, workbench). The panel PROPOSES the rubric and
+  // CONVERGER — drive ONE artifact to a bar. The rubric-design guide, the partition model and its
+  // generator are this skill's own (references/rubric-design.md, scripts/gen_partition.py); the DRIVER
+  // is still thinner than they are — see the KNOWN GAP in references/archetypes.md. The panel PROPOSES the rubric and
   // which criteria fail; it does NOT score convergence. The composite is a DRIVER count of
   // independently-verified passing criteria (kernel #3) — a panel that self-reports all-pass cannot
   // converge the run unless a separate verifier agrees.
@@ -987,7 +988,7 @@ return {
 // as a PASS, so the blocker branch (which lives in the else) never runs on a verdict that refused.
 // A verdict the kernel cannot read is an UNVERIFIED mandate and takes the null path: gap, retry,
 // never `seen` — never a refutation and never a pass (kernel #4). Same rule, same words, as the
-// `usable` in the gauntlet-loop workflow template.
+// `usable` helper this kernel grew out of.
 // The evidence clause is the same fail-closed reading of guardrail #2: a PASS is a claim that some
 // grounded, externally checkable signal was seen, so a pass carrying none is that gap wearing a
 // valid shape. Presence is the kernel's job; judging the CONTENT is the critic's. A refutation needs

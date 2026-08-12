@@ -2,7 +2,7 @@
 
 The driver's progress number is a deterministic function of *verified atoms* (`kernel.md` §3), so it
 is worth exactly what the atom is worth. This file is how you design one. `router.md` §3 has the
-five-row table of what each archetype counts; `gauntlet-loop/references/rubric-design.md` is the
+five-row table of what each archetype counts; `references/rubric-design.md` is the
 converger-only ancestor. Everything here covers all five archetypes except where it says otherwise.
 
 ## 1. Cheaper to verify than to produce — measure the ratio, don't assert it
@@ -72,7 +72,7 @@ split it into the levels you want counted.
 ## 5. Stable ids come from outside the model's prose
 
 `kernel.md` §3 states the rule and `SKILL.md` kernel invariant 3 records the saturator's locator
-trade and the explorer's frozen charter; the incident behind both is in the gauntlet-loop skill's
+trade and the explorer's frozen charter; the incident behind both is in
 `references/rubric-design.md` (the re-worded-finding incident).
 What this file adds is where each id actually comes from in the shipped driver.
 
@@ -162,18 +162,18 @@ rule and gamed itself anyway.
 
 Any optimized proxy is hackable, and pushing past a point degrades the true objective while the proxy
 climbs — so the stop predicate is a Goodhart defense, not only a cost control.
-`gauntlet-loop/references/failure-modes.md` §3–§5 has the mechanisms, numbers and citations.
+`references/failure-modes.md` §3–§5 has the mechanisms, numbers and citations.
 
 - **Keep the worker blind to thresholds** (`kernel.md` §1): fix text names the defect and the change,
   never the number it must clear.
 - **Hold out or paraphrase — CONVERGER ONLY.** Both need criterion *text*, which only a rubric has,
   and holding atoms back contradicts an exhauster's terminal predicate — every item resolved
   (`archetypes.md`, the exhauster's **Frontier**) — so an exhauster that holds atoms out can never reach `drained`.
-- **Position and verbosity bias** (the gauntlet-loop skill's `references/failure-modes.md` §3) need judging machinery this driver lacks
+- **Position and verbosity bias** (`references/failure-modes.md` §3) need judging machinery this driver lacks
   (§13); design around them, since a rung 1–3 atom has no slot order and no length to inflate.
   **Self-enhancement** is the one the template's `TIER` map can express today: a different model
   family for the verifier (`kernel.md` §1).
-- **Diversity collapse** (the gauntlet-loop skill's `references/failure-modes.md` §5) needs *distinct mandates* — correctness / safety /
+- **Diversity collapse** (`references/failure-modes.md` §5) needs *distinct mandates* — correctness / safety /
   performance / spec. **Not implemented — §13**, and the ledger has no group field, so keep the
   mandate split in your design notes and check its coverage yourself before launch.
 - **Red-team the verifier before the run.** Feed it a master-key token (a lone "Solution:", a

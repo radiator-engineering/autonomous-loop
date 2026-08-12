@@ -127,7 +127,7 @@ const STUCK_AFTER = Number(SOURCE.match(/const STUCK_AFTER = (\d+)/)[1])
 // maxRounds is per-scenario: a number for a capped run, the literal 'null' for an unbounded one.
 // dryRounds is per-scenario too, because the plateau stop and the stuck directive share a run: a
 // scenario that has to watch an item fail STUCK_AFTER times must give the plateau room to not fire
-// first (gauntlet's stuckEscalation buys the same room with a climbing composite).
+// first (the converger's stuckEscalation buys the same room with a climbing composite).
 function loadDriver(mode, maxRounds = '6', dryRounds = '2') {
   let src = SOURCE
   const subs = {

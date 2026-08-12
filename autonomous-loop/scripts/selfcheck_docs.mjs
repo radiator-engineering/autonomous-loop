@@ -16,9 +16,11 @@
 //   SYMBOLS Every `MODES.<archetype>.<member>` cited in prose resolves to a member actually defined
 //           in that archetype's block, and every backticked bare identifier that LOOKS like a cited
 //           definition resolves somewhere in the skill's own sources.
-//   PATHS   Every skill-relative file path named in prose exists. The recorded failure: a pointer to
-//           `gauntlet-loop/references/observability.md` sat in this skill for weeks reading like a
-//           local path, resolving to nothing, because the two skills have different roots.
+//   PATHS   Every skill-relative file path named in prose exists HERE. The recorded failure: a
+//           pointer to another skill's `references/observability.md` sat in this skill for weeks
+//           reading like a local path and resolving to nothing, because the two skills had
+//           different roots. That skill has since been absorbed, and with it the whole notion of a
+//           citation that resolves somewhere else — see the PATHS section below for why.
 //
 // Exits non-zero on any hit, naming the file, the line, and the fix.
 
@@ -74,62 +76,21 @@ function modeMembers(archetype) {
 // ---- PATHS ----------------------------------------------------------------------------------
 // A skill-relative path in prose: `references/x.md`, `scripts/y.mjs`, `assets/z.html`.
 const PATH_CITE = /`((?:references|scripts|assets)\/[A-Za-z0-9_.-]+)`/g
-// The doc convention for a file in ANOTHER skill is to name the owning skill in words and then give
-// the path relative to it — "the gauntlet-loop skill's `references/failure-modes.md`". That is a
-// correct citation, not a dangling one, so this gate must recognise it. It looks at the citing line
-// AND the one above, because prose wraps: the first version of this check scanned single lines and
-// called four correct citations broken, purely because the skill name had landed on the previous
-// line. A checker that cries wolf gets switched off, which costs more than the check was worth.
-// Sibling skills are looked for in every root this skill might be installed under, not just the
-// directory it happens to sit in. This file has to give the same verdict from the installed copy,
-// from the source repo, and from a throwaway copy under /tmp — and the first version did not: run
-// from a copy, `dirname(SKILL)` held no sibling skills, so four correct citations were reported
-// broken. A gate whose answer depends on where it was run from is a gate people learn to disbelieve.
-const SIBLING_ROOTS = [dirname(SKILL),
-  join(process.env.HOME || '', '.claude-profile-2', 'skills'),
-  join(process.env.HOME || '', '.claude', 'skills')]
-function findSibling(name) {
-  for (const root of SIBLING_ROOTS) {
-    const p = join(root, name)
-    if (existsSync(p)) return p
-  }
-  return null
-}
-// A candidate is only a sibling skill if it CONTAINS a SKILL.md. Without that test the roots sweep
-// up whatever else lives beside this skill — a scratch directory named `art`, `f` or `sk` was enough
-// to break the check, because "ch·art·er" and "·sk·ill's" contain those names as substrings.
-const SIBLING_NAMES = (() => {
-  const seen = new Set()
-  for (const root of SIBLING_ROOTS) {
-    try {
-      for (const d of readdirSync(root, { withFileTypes: true })) {
-        if (d.isDirectory() && d.name !== 'autonomous-loop' && existsSync(join(root, d.name, 'SKILL.md'))) seen.add(d.name)
-      }
-    } catch { /* root absent — try the next */ }
-  }
-  return [...seen]
-})()
-// Word boundaries, not substrings: a skill is named in prose as a word. See above for what
-// substring matching actually matched.
-const namedIn = (name, context) =>
-  new RegExp(`(^|[^A-Za-z0-9-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9-]|$)`).test(context)
-
-// Returns the owning skill when the citation is a correct cross-skill pointer, the string
-// 'unverifiable' when the prose names a skill this machine does not have installed (not this
-// gate's business to fail on), or null when nothing accounts for the path — the real defect.
-function ownedByNamedSibling(p, context) {
-  const named = SIBLING_NAMES.filter(s => namedIn(s, context))
-  // ANY named skill that has the file vindicates the citation. Deciding on the FIRST candidate is
-  // what let a spurious match veto the real one — collect, then judge.
-  for (const s of named) {
-    const root = findSibling(s)
-    if (root && existsSync(join(root, p))) return s
-  }
-  // A skill was named and is installed, but does not have that file: a genuinely broken pointer.
-  if (named.some(s => findSibling(s) !== null)) return null
-  // Named as belonging to some skill we cannot see. Say nothing rather than cry wolf.
-  return /\bskill'?s?\b/i.test(context) ? 'unverifiable' : null
-}
+// This skill cites NO other skill, so a cited path either exists here or is broken. There is no
+// third answer, and that is a deliberate tightening rather than a simplification.
+//
+// It used to have one. A citation naming another skill in words — "the gauntlet-loop skill's
+// `references/failure-modes.md`" — was resolved against every root this skill might be installed
+// under, and when the named skill was not installed anywhere the check returned 'unverifiable' and
+// said nothing, on the reasoning that a gate which cries wolf gets switched off.
+//
+// That branch was measured, and it is why this code is gone. Running this gate with gauntlet-loop
+// deleted from the machine produced the IDENTICAL green board — "Every citation in this skill
+// resolves" — while four real citations went unchecked. The escape hatch made retiring a cited
+// skill invisible to the one check whose job is to notice. Absorbing those four files removed the
+// last caller; deleting the branch removes the hazard. If a cross-skill citation is ever added
+// back, this gate will call it missing, and re-introducing the exemption becomes a visible decision
+// instead of a silent default.
 
 for (const rel of DOCS) {
   const full = join(SKILL, rel)
@@ -155,12 +116,8 @@ for (const rel of DOCS) {
     for (const m of text.matchAll(PATH_CITE)) {
       const p = m[1]
       if (existsSync(join(SKILL, p))) continue
-      const context = (lines[i - 1] || '') + ' ' + text
-      const owner = ownedByNamedSibling(p, context)
-      if (owner === null) {
-        flag('PATHS', rel, n, `cites \`${p}\`, which does not exist in this skill`,
-          `fix the path, or name the owning skill in words if it lives in another one`)
-      }
+      flag('PATHS', rel, n, `cites \`${p}\`, which does not exist in this skill`,
+        `fix the path — this skill cites no other skill, so there is nowhere else it could resolve`)
     }
   })
 }
@@ -192,14 +149,14 @@ const PROBES = [
   ['SYMBOLS', 'the rule lives in MODES.explorer.notARealMember',
     t => [...t.matchAll(MODES_CITE)].some(m => !(modeMembers(m[1]) || new Set()).has(m[2]))],
   ['PATHS', 'read `references/this-file-does-not-exist.md` first',
-    t => [...t.matchAll(PATH_CITE)].some(m => !existsSync(join(SKILL, m[1])) && ownedByNamedSibling(m[1], t) === null)],
-  // The false-positive direction, which is how this gate first failed: a correct cross-skill citation
-  // whose owning skill is named on the PREVIOUS line must NOT be flagged. Asserting only that the
-  // gate fires would have left the over-firing version passing its own proof.
-  ['PATHS-ok', 'the gauntlet-loop skill\'s\n`references/failure-modes.md` has the citations',
-    t => { const ls = t.split('\n'); const line = ls[1], prev = ls[0]
-           return ![...line.matchAll(PATH_CITE)].some(m =>
-             !existsSync(join(SKILL, m[1])) && ownedByNamedSibling(m[1], prev + ' ' + line) === null) }],
+    t => [...t.matchAll(PATH_CITE)].some(m => !existsSync(join(SKILL, m[1])))],
+  // The false-positive direction. Asserting only that a check FIRES leaves an over-firing version
+  // passing its own proof, and this one has over-fired before — it called four correct citations
+  // broken. So a citation to a file that DOES exist must come back clean. The probe names a real
+  // absorbed file on purpose: if `references/failure-modes.md` ever stops being part of this skill,
+  // this probe goes quiet and the run fails here rather than reporting a clean board.
+  ['PATHS-ok', 'read `references/failure-modes.md` before designing the panel',
+    t => ![...t.matchAll(PATH_CITE)].some(m => !existsSync(join(SKILL, m[1])))],
 ]
 const dead = PROBES.filter(([, probe, fires]) => !fires(probe))
 if (dead.length > 0) {

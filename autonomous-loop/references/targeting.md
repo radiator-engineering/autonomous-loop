@@ -39,7 +39,7 @@ answered (SKILL.md Step 0, the rule under the table). That holds for all six, no
 
 List the distinct objectives you *could* aim at. For each, sketch enough to judge it: what it
 changes, what already measures it, what one atom would be. What counts as a good objective differs
-by archetype, and this is where the gauntlet's converger-only advice has to be generalized:
+by archetype, and this is where the converger-only form of the advice has to be generalized:
 
 | Archetype | A good target is… | …and a bad one looks like |
 |---|---|---|
@@ -66,7 +66,7 @@ Rank on five axes. Score each 1-3 and take the leader.
 
 **Tractability is not the same question in every shape.** Parallel partition applies to convergers,
 exhausters and saturators; the strict form — "a target that serializes to one worker is a task, not
-a loop" — is converger-only (the gauntlet-loop skill's `references/targeting.md`, the **Tractability** axis). An explorer's frontier
+a loop" — is converger-only (the **Tractability** row above). An explorer's frontier
 does not exist until the previous round creates it (`router.md`, the explorer row of the decision tree), so it is serial by design,
 and a sentinel's rounds are spread over time rather than across workers (`archetypes.md`, Sentinel).
 For those two, score the axis on whether one round's work fits one worker's context and finishes
@@ -89,7 +89,7 @@ Run one objective per loop, and sequence the rest. The reason is mechanical in e
 stylistic:
 
 - **Converger** — mixed qualities make critics pull in different directions and nothing converges
-  (the gauntlet-loop skill's `references/targeting.md`, "Run one objective per gauntlet").
+  (the reason this section exists at all).
 - **Saturator** — `DRY_ROUNDS` counts rounds that surfaced no new confirmed finding, across the whole
   run (`archetypes.md`, the saturator's **Stop**). Two defect classes in one loop means class A going quiet increments
   `dry` while class B is barely searched, and the run can report `saturated` over ground it never

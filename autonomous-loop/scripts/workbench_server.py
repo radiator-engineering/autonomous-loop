@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the gauntlet workbench dashboard for a live (or finished) run.
+"""Serve the loop workbench dashboard for a live (or finished) run.
 
 Zero dependencies (stdlib only). Serves a run directory that contains:
     progress.json   — the live ledger the dashboard polls (see references/observability.md), whose
