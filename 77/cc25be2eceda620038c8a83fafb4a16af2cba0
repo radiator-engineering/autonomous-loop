@@ -1,0 +1,18 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  h_2e249d121a4557 131,137,140-157,215-220,862-897,904
+autonomous-loop/assets/loop-template.js
+  h_2e249d121a4557 100-104,137-167,278-326,329-332,339-343,348
+autonomous-loop/scripts/selfcheck_preflight.mjs
+  h_2e249d121a4557 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "77cc25be2eceda620038c8a83fafb4a16af2cba0",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
