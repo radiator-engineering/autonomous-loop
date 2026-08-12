@@ -44,6 +44,10 @@ const SOURCES = {
   'selfcheck_loops.mjs': join(SKILL, 'scripts', 'selfcheck_loops.mjs'),
   'selfcheck_preflight.mjs': join(SKILL, 'scripts', 'selfcheck_preflight.mjs'),
   'selfcheck_docs.mjs': join(SKILL, 'scripts', 'selfcheck_docs.mjs'),
+  // Absorbed from the gauntlet-loop skill when this skill superseded it. They join the list for the
+  // same reason the rest are on it: a file the prose cites is a file whose line numbers will drift.
+  'gen_partition.py': join(SKILL, 'scripts', 'gen_partition.py'),
+  'lock_prompts.py': join(SKILL, 'scripts', 'lock_prompts.py'),
 }
 const SRC = Object.fromEntries(Object.entries(SOURCES).map(([k, p]) => [k, existsSync(p) ? readFileSync(p, 'utf8') : null]))
 
