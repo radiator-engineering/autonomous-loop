@@ -1,0 +1,34 @@
+autonomous-loop/SKILL.md
+  h_2e249d121a4557 13-14,21-22,113-116,402-404
+autonomous-loop/assets/loop-template.js
+  h_2e249d121a4557 78,232-234,991
+autonomous-loop/references/archetypes.md
+  h_2e249d121a4557 40-47,100,178
+autonomous-loop/references/atom-design.md
+  h_2e249d121a4557 5,75,165,172,176
+autonomous-loop/references/observability.md
+  h_2e249d121a4557 218-219
+autonomous-loop/references/router.md
+  h_2e249d121a4557 36
+autonomous-loop/references/substrates.md
+  h_2e249d121a4557 67
+autonomous-loop/references/targeting.md
+  h_2e249d121a4557 42,69,92
+autonomous-loop/scripts/selfcheck_docs.mjs
+  h_2e249d121a4557 19-23,79-93,119-120,152-159
+autonomous-loop/scripts/selfcheck_loops.mjs
+  h_2e249d121a4557 130
+autonomous-loop/scripts/workbench_server.py
+  h_2e249d121a4557 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "fed396c4a0d2eaeb03f5e18d4b62f5f065c0b218",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
