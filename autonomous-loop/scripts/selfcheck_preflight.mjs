@@ -118,6 +118,7 @@ function fillTemplate(ledgerDir, src = TEMPLATE_SRC) {
     '<<RUN_ID>>': 'selfcheck-preflight-run',
     '<<LENSES>>': "['a','b']",
     '<<INVARIANTS>>': "['inv1','inv2']",
+    '<<MANDATES>>': "['correctness','performance']",
   }
   let out = src
   for (const [k, v] of Object.entries(subs)) out = out.split(k).join(v)

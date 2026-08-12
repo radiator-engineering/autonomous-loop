@@ -128,15 +128,33 @@ const STUCK_AFTER = Number(SOURCE.match(/const STUCK_AFTER = (\d+)/)[1])
 // dryRounds is per-scenario too, because the plateau stop and the stuck directive share a run: a
 // scenario that has to watch an item fail STUCK_AFTER times must give the plateau room to not fire
 // first (the converger's stuckEscalation buys the same room with a climbing composite).
-function loadDriver(mode, maxRounds = '6', dryRounds = '2') {
+function loadDriver(mode, maxRounds = '6', dryRounds = '2', mandates = "['correctness','performance']") {
   let src = SOURCE
   const subs = {
     '<<ARCHETYPE>>': mode, '<<MAX_ROUNDS>>': maxRounds, '<<PASS_THRESHOLD>>': '0.9',
     '<<DRY_ROUNDS>>': dryRounds, '<<MAX_RETRIES>>': '2', '<<BATCH>>': '8',
     '<<LENSES>>': "['a','b']", '<<INVARIANTS>>': "['inv1','inv2']",
+    '<<MANDATES>>': mandates,
   }
   for (const [k, v] of Object.entries(subs)) src = src.split(k).join(v)
-  src = src.replace(/<<[^>]+>>/g, 'x')            // all remaining placeholders live inside quotes
+  // Every remaining placeholder becomes a bare `x`, which is only valid because the rest live inside
+  // quotes ('<<SOURCE>>' → 'x'). That was a comment asserting itself until a new UNQUOTED knob was
+  // added above and 86 scenarios failed with `x is not defined` — a true statement about the file that
+  // stopped being true, which is the whole class this harness exists to catch. Now it is checked: an
+  // unquoted leftover names itself here instead of surfacing as a ReferenceError 86 times.
+  // Match the defect exactly: a Config knob whose VALUE is a bare placeholder. Anything else — a
+  // placeholder inside a string, a path in a comment — substitutes to a harmless `x`. An earlier
+  // version of this check tested for quotes on either side and called `'loop-<<TARGET>>'` broken,
+  // which is the over-firing direction and just as useless as not checking.
+  const unquoted = [...src.matchAll(/^const ([A-Z_]+) = <<([A-Z_]+)>>/gm)].map(m => m[2])
+  if (unquoted.length > 0) {
+    console.log(`FAIL  harness    placeholder(s) not quoted in the template and not in this fill map: ` +
+      `${[...new Set(unquoted)].join(', ')}`)
+    console.log(`        add each to \`subs\` above with a literal value — left alone it becomes a bare`)
+    console.log(`        \`x\` and every scenario for that archetype dies with "x is not defined".`)
+    process.exit(1)
+  }
+  src = src.replace(/<<[^>]+>>/g, 'x')            // safe now: everything left is inside quotes
   src = src.replace('export const meta', 'const meta')
   return new AsyncFunction('agent', 'parallel', 'pipeline', 'log', 'phase', 'budget', 'args', src)
 }
@@ -194,7 +212,12 @@ function harness(scn) {
     // space. Defaulted to a well-formed two-sub-question charter so every pre-existing explorer
     // scenario keeps testing what it was written to test; `deadCharter` overrides it.
     if (label === 'charter')         return scn.charter ? scn.charter() : CHARTER()
-    if (label === 'critique')        return scn.critique(n)
+    // One call per MANDATE now, so `n` counts per-critic — which still equals the round, because each
+    // mandate is dispatched exactly once per round. Round number stays the first argument so every
+    // scenario written against the single-critic panel keeps working unchanged: they exercise the
+    // kernel, not panel diversity, and two critics returning the same rubric merge back to that rubric.
+    // The mandate is second, for the scenarios below that DO care which critic said what.
+    if (label.startsWith('critique:')) return scn.critique(n, label.slice(9))
     if (label.startsWith('find:'))   return scn.find(label.slice(5), n)
     if (label === 'hypothesize')     return scn.hypothesize(n)
     if (label === 'poll')            return scn.poll(n)
@@ -836,13 +859,49 @@ const SCENARIOS = {
     // having verified nothing. A knob that is filled but inert is refused at startup, by name.
     dryRoundsZero: { dryRounds: '0', critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
                      throws: e => /DRY_ROUNDS/.test(e.message) },
+
+    // ---- the panel -------------------------------------------------------------------------
+    // DRY_ROUNDS=0 above is a NUMBER that is filled but inert. These are the same defect in a
+    // COLLECTION, which is the shape that looks filled hardest: `[]` is a perfectly good array.
+    // With no mandate no critic runs, so no criterion can fail, so every criterion "passes" and the
+    // run reports `converged` against an artifact nothing read — the vacuous pass reached through a
+    // knob. Refused at startup and named, like the numeric ones.
+    emptyPanel:    { mandates: '[]', critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => pass(id),
+                     throws: e => /MANDATES/.test(e.message) },
+    // Distinctness is the point of a panel, so two identical mandates are refused too. This is
+    // diversity collapse by construction rather than by drift (references/failure-modes.md §5) — the
+    // run would pay for two critics and buy one opinion twice.
+    duplicatePanel: { mandates: "['correctness','correctness']", critique: () => CRIT(['pass', 'pass']),
+                     verify: id => pass(id), throws: e => /MANDATES/.test(e.message) },
+    // deadPanel (above) kills EVERY critic. This kills one of two, which is the harder case: the
+    // survivor returns a clean all-pass rubric, so the round looks complete and would converge on the
+    // strength of half a panel. The dead critic is an unverified gap, so it cannot.
+    oneCriticDies: { critique: (n, m) => (m === 'performance' ? null : CRIT(['pass', 'pass', 'pass'])),
+                     verify: id => pass(id),
+                     expect: r => r.converged === false && r.status !== 'converged' },
+    // FAIL WINS across mandates. Correctness fails r1; performance reports the same id passing. If a
+    // pass could overwrite a fail, the loop would launder a real defect through whichever critic
+    // happened to answer second.
+    //
+    // The assertion is the WORKER'S PROMPT, and it has to be. The first version of this scenario
+    // checked `converged === false` and that r1 reached a worker at all — and it passed with the
+    // fail-wins rule deleted, because a criterion merged to `pass` is still dispatched (as a no-op,
+    // for its first independent check) and still fails the verifier. Both readings produced an
+    // identical board. What actually differs is what the worker is TOLD: "Fix criterion r1" when the
+    // fail survived the merge, "Make NO edit" when a pass buried it. Assert on the difference itself,
+    // not on a downstream number that both paths reach.
+    failWins:      { critique: (n, m) => (m === 'correctness' ? CRIT(['fail', 'pass', 'pass'])
+                                                              : CRIT(['pass', 'pass', 'pass'])),
+                     verify: id => (id === 'r1' ? fail(id, 'major') : pass(id)),
+                     expect: (r, h) => r.converged === false &&
+                       /^Fix criterion r1/.test((h.prompts['work:r1'] || [])[0] || '') },
   },
 }
 
 let failures = 0
 for (const [mode, scns] of Object.entries(SCENARIOS)) {
   for (const [inv, scn] of Object.entries(scns)) {
-    const driver = loadDriver(mode, scn.maxRounds, scn.dryRounds)
+    const driver = loadDriver(mode, scn.maxRounds, scn.dryRounds, scn.mandates)
     const h = harness(scn)
     let r
     try {

@@ -97,6 +97,11 @@ const RUN_ID = '<<RUN_ID>>'               // every fill marker lives ABOVE the k
                                           // is the property the launch gate checks. Never inline one below.
 const LENSES = <<LENSES>>                 // saturator: distinct search lenses, e.g. ['by-file','by-pattern']
 const INVARIANTS = <<INVARIANTS>>         // sentinel: invariants to hold, e.g. ['tests green','p95<200ms']
+const MANDATES = <<MANDATES>>             // converger: the critic panel's DISTINCT mandates, e.g.
+                                          // ['correctness','spec-compliance','performance','readability'].
+                                          // One agent asked to "critique this" is not a panel; N copies
+                                          // of it are not either. The useful split is artifact-specific,
+                                          // which is why it is a knob — that they DIFFER is not optional.
 
 // Model tier map (balanced default; quality-first shifts each up one tier). This lives in Config,
 // above the hashed regions, because it is the ONE thing below it that a filled driver is SUPPOSED to
@@ -127,6 +132,37 @@ if (BAD_KNOBS.length > 0) {
     `Loop knob out of range: ${BAD_KNOBS.join('; ')}. Fix it in the Config block above ` +
     `(see SKILL.md Step 5 "Knobs") before running. Every archetype reads DRY_ROUNDS except the ` +
     `exhauster and the sentinel, so 0 there is not "not applicable" — it is an instant stop.`)
+}
+
+// The same defect one TYPE over: a collection knob that is empty. `DRY_ROUNDS = 0` is caught above
+// because a number can be out of range; `[]` looks like a filled knob and disarms the predicate it
+// feeds just as completely.
+//
+//   MANDATES = []   no critic runs, so no criterion ever fails, so every criterion "passes" and the
+//                   converger reports `converged` against an artifact nothing read.
+//   LENSES = []     no finder runs, so every round surfaces nothing, so DRY_ROUNDS of nothing is a
+//                   plateau and the saturator reports `saturated` having searched nowhere.
+//   INVARIANTS = [] nothing can be violated, so the sentinel holds perfect health forever.
+//
+// All three are green terminal statuses earned by doing no work — the vacuous pass, arrived at through
+// a knob rather than a missing assertion. Checked only for the archetype that READS the knob; the
+// other four leave it empty legitimately, and failing them would teach people to fill it with noise.
+const FLEET = { converger: ['MANDATES', MANDATES, 'critique with'],
+                saturator: ['LENSES', LENSES, 'search with'],
+                sentinel:  ['INVARIANTS', INVARIANTS, 'hold'] }[MODE]
+if (FLEET) {
+  const [name, value, verb] = FLEET
+  // Distinct, not merely present: two identical mandates are two identical critics, which is diversity
+  // collapse by construction rather than by drift (references/failure-modes.md §5).
+  const ok = Array.isArray(value) && value.length >= 1 &&
+    value.every(v => typeof v === 'string' && v.trim() !== '') &&
+    new Set(value).size === value.length
+  if (!ok) {
+    throw new Error(
+      `Loop knob out of range: ${name}=${JSON.stringify(value)}. The ${MODE} reads it and needs a ` +
+      `non-empty array of DISTINCT non-empty strings. Empty does not mean "no preference" — it means ` +
+      `this run has nothing to ${verb}, and the terminal predicate then fires green having done nothing.`)
+  }
 }
 
 // A verifier returns THIS, never prose. The kernel counts from it; it never reads a vibe score.
@@ -239,45 +275,77 @@ const MODES = {
     doneStatus: 'converged',
     async init(state) { state.total = 0; state.composite = 0; state.passing = new Set(); state.rubric = null },
     async frontier(state) {
-      const panel = await agent(
-        `Run the critic panel on ${SOURCE} against the frozen spec. Return the FULL rubric: ` +
-        `{total, criteria:[{id, region, status:"pass"|"fail", fix}]} where total = criteria.length and ` +
-        `fix is the concrete change for a failing criterion (omit for a passing one). Reuse the ` +
-        `rubric's own criterion ids VERBATIM every round — every counter keys on them, so a re-worded ` +
-        `id is discarded as unverified rather than treated as a new criterion.`,
-        { ...TIER.verify, phase: 'Frontier', label: 'critique', schema: CRITERIA_SCHEMA })
-      // A panel that crashed or answered with something that is not a criteria array is an UNVERIFIED
-      // GAP, never an empty rubric. Empty reads clean: no criterion fails, nothing is blocked, nothing
-      // is unverified — so the frontier is dry, the plateau fires, and a run whose critic panel never
-      // ran finishes `stopped` instead of `blocked`. The gap ages patience and pins the status.
-      const criteria = Array.isArray(panel?.criteria) ? panel.criteria : (state.roundGap = true, [])
-      // The rubric FREEZES on the first panel: its ids are this run's atom vocabulary. A panel that
-      // re-words an id later is drifting, not finding a new criterion — admitting the new id would let
-      // one reworded blocker open a fresh blocked entry every round, and the count is meant to be per
-      // defect. An unrecognised id is fail-closed: dropped, and the round carries an unverified gap.
-      // A criterion with no string id is the same gap one level down: it names nothing the counters can
-      // key on, it would freeze into the rubric as `undefined`, and a verdict on it would be confirmed
-      // like any other — a criterion nobody wrote lifting the composite. Dropped here, so the length
-      // check below (which compares against the RAW panel) raises the gap for it.
-      // A status outside the schema's enum is dropped for the same reason and by the same route: the
-      // filter below tests for one exact string, so `FAIL` would fall through it as "not failing" and
-      // enter the run as a criterion nobody has to fix.
-      const named = criteria.filter(c => c && typeof c.id === 'string' && CRITERION_STATUSES.has(c.status))
+      // A PANEL — one fresh-context critic per mandate, in parallel, exactly like the saturator's
+      // lenses and for the same reason. `references/failure-modes.md` §5: N critics with the same brief
+      // converge on the same easy findings, so the run goes blind to whole classes of defect while
+      // looking busy. Distinct mandates are what make the coverage real, and the driver stamps the
+      // mandate from the loop variable so a critic can neither claim another's nor invent a sixth.
+      const reports = await parallel(MANDATES.map(mandate => () =>
+        agent(
+          `You are the ${mandate} critic on ${SOURCE}, judged against the frozen spec. Report ONLY ` +
+          `criteria inside your own mandate — another critic owns the rest, and duplicating theirs ` +
+          `costs the panel the coverage it exists for. Return the rubric for YOUR mandate: ` +
+          `{total, criteria:[{id, region, status:"pass"|"fail", fix}]} where total = criteria.length and ` +
+          `fix is the concrete change for a failing criterion (omit for a passing one). Reuse the ` +
+          `rubric's own criterion ids VERBATIM every round — every counter keys on them, so a re-worded ` +
+          `id is discarded as unverified rather than treated as a new criterion.`,
+          { ...TIER.verify, phase: 'Frontier', label: `critique:${mandate}`, schema: CRITERIA_SCHEMA })))
+      // A critic that crashed judged nothing — it did not find nothing. Dropped silently (the tempting
+      // `.filter(Boolean)`), a round in which every critic died looks like a clean all-pass rubric: no
+      // criterion fails, nothing is blocked, nothing is unverified, so the frontier is dry, the plateau
+      // fires, and a run whose panel never ran reports `converged`. Each dead critic is an UNVERIFIED
+      // GAP that ages patience and pins the status. `parallel` preserves order and puts `null` in place,
+      // so reports[i] is MANDATES[i]'s report and the association survives a death.
+      let dropped = 0
+      const merged = new Map()
+      reports.forEach((r, i) => {
+        if (!Array.isArray(r?.criteria)) { state.roundGap = true; return }
+        for (const c of r.criteria) {
+          // A criterion with no string id names nothing the counters can key on — it would freeze into
+          // the rubric as `undefined` and a verdict on it would be confirmed like any other, a criterion
+          // nobody wrote lifting the composite. A status outside the enum is the same defect one level
+          // down: the failing-filter below tests one exact string, so `FAIL` falls through it as "not
+          // failing" and enters the run as a criterion nobody has to fix. Both are dropped, and every
+          // drop raises the round's gap rather than quietly shrinking the denominator.
+          if (!c || typeof c.id !== 'string' || !CRITERION_STATUSES.has(c.status)) { dropped++; continue }
+          const prev = merged.get(c.id)
+          // FAIL WINS when two mandates disagree about one id. This is not a tie to average: the
+          // performance critic passing a criterion the correctness critic failed does not make the
+          // defect go away, and letting a pass overwrite a fail would let the loop launder a real
+          // failure through whichever critic happened to answer second.
+          if (!prev || (prev.status === 'pass' && c.status === 'fail')) {
+            merged.set(c.id, { id: c.id, region: c.region, fix: c.fix || prev?.fix || '',
+                               status: c.status, mandate: MANDATES[i] })
+          }
+        }
+      })
+      // The rubric FREEZES on the first panel — the UNION across mandates — and its ids are this run's
+      // atom vocabulary. A panel that re-words an id later is drifting, not finding a new criterion:
+      // admitting the new id would let one reworded blocker open a fresh blocked entry every round,
+      // when the count is meant to be per defect. An unrecognised id is fail-closed: dropped, gap raised.
+      const named = [...merged.values()]
       if (!state.rubric) state.rubric = new Set(named.map(c => c.id))
       const known = named.filter(c => state.rubric.has(c.id))
-      if (known.length !== criteria.length) state.roundGap = true
+      // Count DROPS, not the merged-vs-raw difference. Two mandates legitimately reporting the same id
+      // is a merge, not a defect, so comparing sizes would raise a gap on every well-behaved round.
+      dropped += named.length - known.length
+      if (dropped > 0) state.roundGap = true
       state.total = state.rubric.size
       // Emit every criterion still needing an independent verdict this run: each failing one (fix +
       // re-measure) plus each not-yet-confirmed-passing one (a first independent check). This is why
       // the panel's word alone can't converge the loop — every criterion goes through VERIFY.
       const items = known
         .filter(c => c.status === 'fail' || !state.passing.has(c.id))
-        .map(c => ({ id: c.id, region: c.region, fix: c.fix || '', proposed: c.status }))
+        // `mandate` rides the item into the atom and the ledger, so which critic's lane a defect came
+        // from survives into the record. It is set here from the merge, never from a verdict:
+        // `fromVerdict` narrows a verifier's return to the schema's own keys, so a verifier cannot
+        // reassign a finding to a mandate that did not raise it.
+        .map(c => ({ id: c.id, region: c.region, fix: c.fix || '', proposed: c.status, mandate: c.mandate }))
       // Re-feed still-open blocked regions so a passing re-verify can clear them. NEVER clear a
       // blocker just because the panel stopped reporting it — clearance requires a real passing
       // verdict from the separate verifier (worker≠verifier).
       for (const b of openBlockers(state)) {
-        if (!items.some(it => it.id === b.id)) items.push({ id: b.id, region: b.region, fix: b.fix || '', proposed: 'fail' })
+        if (!items.some(it => it.id === b.id)) items.push({ id: b.id, region: b.region, fix: b.fix || '', proposed: 'fail', mandate: b.mandate })
       }
       return items
     },
