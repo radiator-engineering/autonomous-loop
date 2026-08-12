@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+      "passed": false,
+      "evidence": "Response makes the set enumerable up front, opposite of the assertion: 'The set of ways this codebase writes to a log is finite and enumerable' and 'over a finite, fully-enumerated set of log call sites. The finiteness of the sink surface is the lever that turns \"find everything\" from hopeless into measurable.' Its core move is 'enumerate the sinks.'"
+    },
+    {
+      "text": "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+      "passed": true,
+      "evidence": "'Layer independent detectors (taint, heuristics, literals, runtime NER) so their union maximizes recall'; each has 'a different false-negative profile'; explicitly rejects single-grep: 'The mistake most PII scans make is to search for PII (grep ... regex) ... We invert it.'"
+    },
+    {
+      "text": "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+      "passed": false,
+      "evidence": "Not present. Verification is confidence tiers ('high = taint source->sink ... medium = heuristic') and static<->runtime cross-check (corroboration/ground truth), not a separate agent adversarially trying to refute each candidate before it counts."
+    },
+    {
+      "text": "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+      "passed": false,
+      "evidence": "Stop rule is coverage-anchored ('sink-surface coverage = 100%; canary recall >= target; marginal detector yield flat over the last N sweeps ...'); dedup is 'fingerprint = (file, sink, pii-class, detector)' / 'the same site isn't re-reported' -- not an explicit 'dedup against everything SEEN (not just confirmed)' mechanism."
+    },
+    {
+      "text": "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once",
+      "passed": true,
+      "evidence": "'Autonomy = three cadences (PR gate, nightly sweep, always-on runtime monitor)'; 'this confidence is maintained, not just achieved once'; 'the runtime monitor and canaries never stop' -- not a one-pass/fixed-queue model."
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 3,
+    "total": 5,
+    "pass_rate": 0.4
+  },
+  "timing": {
+    "total_tokens": 37585,
+    "duration_ms": 162599,
+    "total_duration_seconds": 162.6
+  }
+}

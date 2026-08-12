@@ -1,0 +1,26 @@
+{
+  "expectations": [
+    {
+      "text": "Recognizes conversion rate is a LAGGING, live-traffic outcome whose per-round verification is a slow, noisy experiment not available at agent-loop timescale, so the atom is not cheaper to verify than to produce",
+      "passed": true,
+      "evidence": "It states 'Conversion is a slow, noisy, statistical signal. Reading a real lift takes weeks of live traffic and a significance test \u2014 no agent round can observe it' and calls the win-atom 'undecidable inside the loop,' directly capturing that verification is not available at loop timescale and thus not cheaper than production."
+    },
+    {
+      "text": "Does NOT set up an autonomous convergence loop that treats 'conversion improved' as a fast, per-round checkable atom",
+      "passed": true,
+      "evidence": "It explicitly says 'don't build the loop you're describing,' moves agents onto decidable atoms (grounded hypothesis, shippable instrumented variant), and states '\"Done\" for an item means live-test-ready and correctly measured \u2014 explicitly not \"wins\"' with the win/lose verdict handed to a calendar-paced A/B platform."
+    },
+    {
+      "text": "Distinguishes the true outcome (conversion) from fast proxies (perf/Lighthouse, accessibility, a concrete design rubric) and, if it proposes looping on a proxy, explicitly flags it as a gameable proxy that can diverge from the real goal",
+      "passed": true,
+      "evidence": "It uses axe/Lighthouse (a11y + perf/LCP) and Playwright only as regression guardrails rather than the optimization target, keeps conversion as the sole significance-tested verifier, and flags the self-scored 'predicted conversion \u2014 i.e. taste' proxy as one that 'drifts, games its own judgment.'"
+    },
+    {
+      "text": "Explains WHY looping directly on the lagging/gameable outcome fails: no ground-truth signal available per round, reward-hacking the proxy, budget burned without real direction",
+      "passed": true,
+      "evidence": "It cites all three: 'the loop has nothing external to verify a \"win\" against' (no ground truth), 'it drifts, games its own judgment, and hands you a confident green number' (reward hacking), and 'would burn budget producing plausible-looking redesigns that no one has shown convert better' (wasted budget)."
+    }
+  ],
+  "passed_count": 4,
+  "total": 4
+}

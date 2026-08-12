@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Identifies this as an exhauster over a KNOWN, enumerable queue and enumerates the call sites up front",
+      "passed": true,
+      "evidence": "Phase 0.1 'Inventory the call sites' enumerates a known queue up front: 'rg -n --json 'logInfo|logWarn|logError|logDebug' > inventory.raw.json', classifies into buckets, gives counts ('130 A/B, 55 C/D, 15 E/F/G'), and 'Save this as inventory.json - it becomes the worklist.' This is an exhauster over a KNOWN, enumerable queue."
+    },
+    {
+      "text": "Defines a per-item done-criterion verified by a SEPARATE agent (compiles / type-checks / tests pass), not the worker's own say-so",
+      "passed": true,
+      "evidence": "Per-item protocol step 4-5: 'Run tsc + lint + the file's tests. ... If green -> mark done'; done is gated on objective checks, explicitly contrasted with self-report ('far more reliable than the model reporting \"I did all 200.\"'), plus an automated invariant gate: 'Any site that drops a value fails the gate automatically.'"
+    },
+    {
+      "text": "Fails closed: an unverified or failed site returns to the queue and becomes a NAMED blocked item after bounded retries, never a silent skip",
+      "passed": true,
+      "evidence": "'If it can't be made green in N=2 attempts -> mark escalated with a one-line reason, leave a // TODO(log-migration): <reason> marker, and move on ... You end up with a small, explicitly-flagged pile to review instead of a silent landmine buried in 200 files.' Bounded retries then a NAMED blocked item, never a silent skip."
+    },
+    {
+      "text": "Counts progress deterministically (done/total) and reports terminal 'blocked' if any site is unverified rather than a percentage-done success",
+      "passed": true,
+      "evidence": "'the count of violations is your burn-down chart; at the end, zero violations is the objective, un-gameable definition of \"done.\"' plus 'measure progress against a fixed denominator'; status enum {pending, done, escalated, failed}; Phase 4 'Objective completion: the ban-lint reports zero logInfo references. Denominator matched.' Completion is binary (zero remaining) with escalated pile surfaced, not a percentage-done success."
+    },
+    {
+      "text": "Includes a budget ceiling / model tiering and an observable ledger of item states, not just a for-loop that trusts each edit",
+      "passed": false,
+      "evidence": "Observable ledger is present ('status in {pending, done, escalated, failed}', 'state lives in a file, the run is crash-safe and resumable'), but there is no budget ceiling or model tiering. Stop conditions are only quality/retry bounds ('N attempts', 'Escalation count exceeds a threshold (say >15% of a bucket)'), not a resource/token/iteration budget cap, and the codemod-vs-model split is approach tiering, not model tiering. No mention of a budget ceiling or routing to different model tiers."
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 1,
+    "total": 5,
+    "pass_rate": 0.8
+  },
+  "timing": {
+    "total_tokens": 35911,
+    "duration_ms": 138328,
+    "total_duration_seconds": 138.3
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+      "passed": true,
+      "evidence": "\"The method has exactly five loop shapes, distinguished by two knobs\" and it names Saturator, Exhauster, Converger, and Sentinel as distinct archetypes; opens with \"Don't run one 'improve the app' loop.\""
+    },
+    {
+      "text": "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+      "passed": true,
+      "evidence": "\"Flaky tests -> **Saturator, then Exhauster**\", \"Slow API routes -> **Converger** (drive to a latency bar)\", and \"Linear bug backlog -> **Exhauster** (drain a known queue)\" -- concrete candidates mapped to archetypes."
+    },
+    {
+      "text": "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+      "passed": true,
+      "evidence": "Explicit \"Decidable?\" gate per loop: flaky \"Decidable? Yes, strongly... This is an ideal loop\"; perf \"'make it faster' with no repeatable benchmark and no target is *taste*\"; backlog flags \"'The dashboard feels janky' -- *not* decidable by a loop\" and triages taste-based tickets to a deferred human pass."
+    },
+    {
+      "text": "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+      "passed": true,
+      "evidence": "\"**De-flake the test suite first**... Every other loop's definition of 'done' is 'a test passed... and nothing regressed.' If the suite is flaky, that ground truth is a coin flip\" -- picks one loop first with leverage rationale, then names deferred rest as a sequence: \"Then, in parallel... Optionally, afterward: a standing watch.\""
+    },
+    {
+      "text": "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress",
+      "passed": true,
+      "evidence": "\"**Worker != verifier.** The agent that fixes a ticket never signs off on it\" and \"**Count, don't vibe.** Progress is `tickets verified / total`... arithmetic in the driver from verified atoms. Not a model-emitted 0-1 score\"; for the chosen de-flake loop the verifier is \"a *different* agent runs the fixed test 50+ consecutive times.\""
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "total": 5,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "total_tokens": 68898,
+    "duration_ms": 195573,
+    "total_duration_seconds": 195.6
+  }
+}

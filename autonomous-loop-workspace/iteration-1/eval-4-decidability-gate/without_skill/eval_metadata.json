@@ -1,0 +1,11 @@
+{
+  "eval_id": 4,
+  "eval_name": "4-decidability-gate",
+  "prompt": "Make our landing page feel more premium and high-end, and set it up so Claude keeps iterating on it automatically until it's great.",
+  "assertions": [
+    "Recognizes the atom ('feels premium' / 'until it's great') is a taste judgment with no externally checkable signal",
+    "Does NOT immediately spin up an autonomous convergence loop against the vague goal",
+    "Offers the honest options: build the measurement first (a concrete reference + measurable criteria like a pixel/contrast/Lighthouse rubric) OR a bounded polish pass that won't truly 'converge'",
+    "Explains WHY looping on an unmeasurable target fails (drift, reward-hacking / gaming its own judgment, burns budget without direction)"
+  ]
+}

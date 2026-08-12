@@ -1,0 +1,89 @@
+{
+  "skill_name": "autonomous-loop",
+  "evals": [
+    {
+      "id": 1,
+      "name": "open-ended-routing",
+      "prompt": "Here's my web app repo — Next.js, it has a Jest test suite (a handful of tests are flaky), a couple of slow API routes, and a growing backlog of bug tickets in Linear. I want to set Claude loose to improve it autonomously but I'm honestly not sure how to structure that. What should I actually run, and why?",
+      "expected_output": "Surveys the target, enumerates candidate loop shapes across archetypes, gates each on whether its atom is decidable, picks one highest-leverage loop to run first with rationale, names a sequence for the rest, and specifies worker!=verifier + counted progress for the chosen loop.",
+      "files": [],
+      "assertions": [
+        "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+        "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+        "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+        "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+        "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "exhauster-migration-fail-closed",
+      "prompt": "We need to migrate all ~200 call sites from our old logInfo() logging helper to the new structured log.info({...}) API. I want to set it up so Claude can grind through the whole thing autonomously and I can actually trust the result at the end. How should this be structured?",
+      "expected_output": "An exhauster over a known enumerable queue: enumerate call sites up front, each migrated by a worker and independently verified against a done-criterion, failures return to the queue and become named blocked items after retries, progress counted done/total, terminal status 'blocked' if any site is unverified, with a budget ceiling and a ledger of item states.",
+      "files": [],
+      "assertions": [
+        "Identifies this as an exhauster over a KNOWN, enumerable queue and enumerates the call sites up front",
+        "Defines a per-item done-criterion verified by a SEPARATE agent (compiles / type-checks / tests pass), not the worker's own say-so",
+        "Fails closed: an unverified or failed site returns to the queue and becomes a NAMED blocked item after bounded retries, never a silent skip",
+        "Counts progress deterministically (done/total) and reports terminal 'blocked' if any site is unverified rather than a percentage-done success",
+        "Includes a budget ceiling / model tiering and an observable ledger of item states, not just a for-loop that trusts each edit"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "saturator-find-all-pii",
+      "prompt": "I need you to find every place in our codebase where we might be logging PII (emails, tokens, names, addresses) into our log sinks, and don't stop until you're confident you've actually found all of them. Set this up to run on its own.",
+      "expected_output": "A saturator over an unknown-size set: heterogeneous finders (multiple search lenses), each candidate adversarially verified by a separate agent before counting, dedup against everything seen, stop after K consecutive dry rounds mapping 'confident I found them all' to saturation — not a single grep pass.",
+      "files": [],
+      "assertions": [
+        "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+        "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+        "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+        "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+        "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "decidability-gate-taste-target",
+      "prompt": "Make our landing page feel more premium and high-end, and set it up so Claude keeps iterating on it automatically until it's great.",
+      "expected_output": "Recognizes the atom ('feels premium / is great') is a taste judgment with no checkable signal, declines to spin up an autonomous convergence loop against it, and offers the honest options: build the missing measurement first (a concrete reference + measurable criteria) or run a bounded best-effort polish that won't truly converge — with the reasoning for why looping on an unmeasurable target fails.",
+      "files": [],
+      "assertions": [
+        "Recognizes the atom ('feels premium' / 'until it's great') is a taste judgment with no externally checkable signal",
+        "Does NOT immediately spin up an autonomous convergence loop against the vague goal",
+        "Offers the honest options: build the measurement first (a concrete reference + measurable criteria like a pixel/contrast/Lighthouse rubric) OR a bounded polish pass that won't truly 'converge'",
+        "Explains WHY looping on an unmeasurable target fails (drift, reward-hacking / gaming its own judgment, burns budget without direction)"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "decidability-gate-lagging-proxy",
+      "prompt": "Our signup conversion rate has been flat for months. I want to set Claude loose to autonomously keep redesigning and iterating on the landing page until conversion goes up — just let it run and optimize against the number until it wins. How do I set that up?",
+      "expected_output": "Recognizes that even though a real number exists (conversion rate), it is a lagging, live-traffic outcome whose per-edit verification is a slow, noisy A/B experiment — so the atom is NOT cheaper to verify than to produce and cannot be closed at agent-loop timescale. Declines to spin up an autonomous convergence loop that treats 'conversion went up' as a fast per-round checkable signal, and warns that optimizing 'against the number' directly invites reward-hacking. Offers the honest options: loop against fast, pre-validated proxies (perf/Lighthouse, accessibility, a concrete design rubric vs a reference) with the explicit caveat that they are gameable proxies that can diverge from the real outcome; or run bounded design iterations gated by human/experiment review rather than an autonomous loop — and explains why looping directly on a lagging/gameable outcome fails.",
+      "files": [],
+      "assertions": [
+        "Recognizes conversion rate is a LAGGING, live-traffic outcome whose per-round verification is a slow, noisy experiment not available at agent-loop timescale, so the atom is not cheaper to verify than to produce",
+        "Does NOT set up an autonomous convergence loop that treats 'conversion improved' as a fast, per-round checkable atom",
+        "Distinguishes the true outcome (conversion) from fast proxies (perf/Lighthouse, accessibility, a concrete design rubric) and, if it proposes looping on a proxy, explicitly flags it as a gameable proxy that can diverge from the real goal",
+        "Explains WHY looping directly on the lagging/gameable outcome fails: no ground-truth signal available per round, reward-hacking the proxy, budget burned without real direction"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "unbounded-run-until-good",
+      "prompt": "Our Rust image decoder has to pass the full libpng conformance suite (currently 41 of 300 vectors fail) and decode the 4K reference frame in under 30ms (currently 210ms). Both are one command away. Don't give me a fixed number of rounds — I want this running unattended until it's actually good, however long that takes. Set it up.",
+      "expected_output": "Routes to a converger over a decidable atom (conformance vectors + a measured p95), confirms the decidability gate passes, then configures the run UNBOUNDED — MAX_ROUNDS = null with RUNAWAY_BACKSTOP as a safety rail, not a plan — rather than a 3-6 round batch. The kernel is unchanged: worker != verifier, counted progress from verified atoms, fail-closed on a crashed verifier, blockers pin the status, budget ceiling and tiering. Names the stuck rule: consecutive failures per atom trip a threshold that escalates to a stronger tier and directs a change of approach rather than re-tuning, so an uncapped run cannot spin on one criterion. The brief states a stop predicate rather than a number: the archetype's terminal state plus plateau/DRY_ROUNDS, the budget, and a blocker that survives BLOCKER_PATIENCE rounds of escalated rework. Autonomy is autonomous with a live workbench, and a backstop hit is recorded as hitBackstop and reported as a defect signal, not a finish.",
+      "files": [],
+      "assertions": [
+        "Configures the run UNBOUNDED (MAX_ROUNDS = null / no numeric round cap, bounded only by RUNAWAY_BACKSTOP + budget) instead of proposing a fixed 3-6 round batch",
+        "Treats the backstop as a safety rail whose being hit signals a broken stop predicate, NOT as the plan or an acceptable finish",
+        "Keeps the kernel intact under the removed cap: separate verifier from worker, counted progress from verified atoms, fail-closed on a crashed/absent verdict, blockers pin the terminal status, hard budget ceiling",
+        "Names a stuck/escalation rule — consecutive failures on the same atom trip a threshold that escalates the tier and directs a CHANGE OF APPROACH (root cause first) rather than re-tuning the same number",
+        "States the stop as a PREDICATE, not a round count: the archetype's terminal state plus the kernel stops that bound it — plateau/DRY_ROUNDS, the budget, and a blocker that stays open for BLOCKER_PATIENCE rounds of escalated rework (not on sight)",
+        "Confirms the atom is decidable (conformance vectors + a measured timing) before removing the cap, and does not warn against unbounded per se — the flagged pairing is unbounded plus a weakly measurable atom",
+        "Sets autonomy to autonomous with live observability (progress.json + workbench) so the unattended run is watchable"
+      ]
+    }
+  ]
+}

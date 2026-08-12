@@ -1,0 +1,11 @@
+{
+  "eval_id": 5,
+  "eval_name": "decidability-gate-lagging-proxy",
+  "prompt": "Our signup conversion rate has been flat for months. I want to set Claude loose to autonomously keep redesigning and iterating on the landing page until conversion goes up \u2014 just let it run and optimize against the number until it wins. How do I set that up?",
+  "assertions": [
+    "Recognizes conversion rate is a LAGGING, live-traffic outcome whose per-round verification is a slow, noisy experiment not available at agent-loop timescale, so the atom is not cheaper to verify than to produce",
+    "Does NOT set up an autonomous convergence loop that treats 'conversion improved' as a fast, per-round checkable atom",
+    "Distinguishes the true outcome (conversion) from fast proxies (perf/Lighthouse, accessibility, a concrete design rubric) and, if it proposes looping on a proxy, explicitly flags it as a gameable proxy that can diverge from the real goal",
+    "Explains WHY looping directly on the lagging/gameable outcome fails: no ground-truth signal available per round, reward-hacking the proxy, budget burned without real direction"
+  ]
+}

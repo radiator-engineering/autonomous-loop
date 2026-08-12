@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+      "passed": true,
+      "evidence": "\"Archetype: Saturator.\" ... \"the count is unknown up front \u2014 finding the members *is* the work, so this is a search over an unknown-size set, not a known queue.\""
+    },
+    {
+      "text": "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+      "passed": true,
+      "evidence": "\"Frontier: heterogeneous *finders*, each searching a different way (by log-sink API, by grep pattern, by dataflow ... )\"; \u00a72 lists 8 distinct lenses (by-sink, by-pattern, by-dataflow, by-schema, by-serialization, by-config, by-diff, by-runtime)."
+    },
+    {
+      "text": "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+      "passed": true,
+      "evidence": "\"Verify: a separate, adversarial agent tries to refute it ... and passes only if the finding survives\"; \"Verify contract (a *different* agent, adversarial). The verifier never sees the finder's reasoning.\""
+    },
+    {
+      "text": "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+      "passed": true,
+      "evidence": "\"Stop predicate: DRY_ROUNDS = 3 consecutive rounds in which no lens surfaces a new confirmed finding\"; \"a candidate the verifier refutes is still written to seen ... dedup against seen, never against confirmed\"."
+    },
+    {
+      "text": "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once",
+      "passed": true,
+      "evidence": "\"a search over an unknown-size set, not a known queue\"; \"looping until none of them find anything new for 3 rounds, is a far stronger signal than one pass.\""
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "total": 5,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "total_tokens": 71952,
+    "duration_ms": 254001,
+    "total_duration_seconds": 254.0
+  }
+}

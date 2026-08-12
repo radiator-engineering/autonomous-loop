@@ -1,0 +1,26 @@
+{
+  "expectations": [
+    {
+      "text": "Recognizes conversion rate is a LAGGING, live-traffic outcome whose per-round verification is a slow, noisy experiment not available at agent-loop timescale, so the atom is not cheaper to verify than to produce",
+      "passed": true,
+      "evidence": "The 'Why the literal version fails' table states conversion 'moves slowly, it's noisy' and that 'A real conversion delta needs thousands of visitors and 1-2+ weeks per variant to reach significance,' so 'a loop that iterates until conversion goes up iterates roughly once a fortnight' - directly framing per-round verification as a slow, noisy live experiment."
+    },
+    {
+      "text": "Does NOT set up an autonomous convergence loop that treats 'conversion improved' as a fast, per-round checkable atom",
+      "passed": true,
+      "evidence": "The verdict opens 'Do not build the loop you described' and the inner loop 'never touches production and never reads live conversion,' with real conversion decided only by a human-gated A/B test in the outer loop."
+    },
+    {
+      "text": "Distinguishes the true outcome (conversion) from fast proxies (perf/Lighthouse, accessibility, a concrete design rubric) and, if it proposes looping on a proxy, explicitly flags it as a gameable proxy that can diverge from the real goal",
+      "passed": true,
+      "evidence": "It separates the fast proxies it loops on (Lighthouse/LCP/CLS, WCAG accessibility, a scored heuristic rubric) from the real outcome, and explicitly flags gameability: 'Signups is a proxy. Optimizing it in isolation can tank the metrics that actually matter (paid conversion, activation, retention)' plus the self-judging reward-hacking and dark-pattern warnings."
+    },
+    {
+      "text": "Explains WHY looping directly on the lagging/gameable outcome fails: no ground-truth signal available per round, reward-hacking the proxy, budget burned without real direction",
+      "passed": true,
+      "evidence": "The failure table covers all three: no per-round ground truth ('most iterations are inconclusive'), reward-hacking ('the agent both changes the page and decides whether it won, it will declare victory... converges on urgency timers, fake scarcity'), and wasted budget/direction ('an agent reading the raw number will learn from randomness and thrash')."
+    }
+  ],
+  "passed_count": 4,
+  "total": 4
+}

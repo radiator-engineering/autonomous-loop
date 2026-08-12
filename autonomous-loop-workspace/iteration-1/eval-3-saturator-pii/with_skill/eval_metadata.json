@@ -1,0 +1,12 @@
+{
+  "eval_id": 3,
+  "eval_name": "3-saturator-pii",
+  "prompt": "I need you to find every place in our codebase where we might be logging PII (emails, tokens, names, addresses) into our log sinks, and don't stop until you're confident you've actually found all of them. Set this up to run on its own.",
+  "assertions": [
+    "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+    "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+    "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+    "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+    "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once"
+  ]
+}

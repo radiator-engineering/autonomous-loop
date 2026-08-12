@@ -1,0 +1,265 @@
+#!/usr/bin/env node
+// Preflight — the launch gate. NOTHING launches until this exits 0.
+//
+// Why this exists, stated plainly so nobody deletes it as ceremony: every guarantee in this skill
+// lived in prose, and prose is advice. A run can satisfy the whole kernel — worker≠verifier,
+// counted atoms, fail-closed verdicts, the witness gate — and still show a human nothing, because
+// the operator wrote their own driver script and never touched the template at all. That is not a
+// hypothetical: it is the recorded failure that motivated this file. The loops were hand-rolled
+// Workflow scripts. They wrote no progress.json, launched no workbench, filled no hero slot, and
+// the skill's Step 5 ("stand up observability, give the user the URL") could not stop them,
+// because a step is something you can skip and a gate is not.
+//
+// So the four things the skill PROMISES are checked here as facts on disk and on the wire:
+//
+//   BRIEF     the run was elicited from a human, not assumed — the intake questions are answered
+//   DESCENT   the driver IS the kernel, byte-for-byte, not a script that resembles it — and the two
+//             paths the kernel writes through (LEDGER, HANDOFF) are still derived from LEDGER_DIR,
+//             which no region hash can cover because Config sits above every region
+//   FILLED    no <<PLACEHOLDER>> survived into a runnable driver
+//   LIVE      a workbench is serving THIS ledger dir right now, proven by fetching from it
+//
+// Usage:
+//   node scripts/preflight_launch.mjs <driver.js> <ledger-dir> [--workbench http://127.0.0.1:8787]
+//
+// Exits 0 and writes <ledger-dir>/PREFLIGHT.json on success; exits 1 naming every failure. It
+// fails closed, like every other verdict in this skill: an unreadable file, an unreachable server
+// or an unparseable region is a FAIL, never a skip.
+
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve, join } from 'node:path'
+
+const SKILL = dirname(dirname(fileURLToPath(import.meta.url)))
+const TEMPLATE = join(SKILL, 'assets', 'loop-template.js')
+const SELFCHECK = join(SKILL, 'scripts', 'selfcheck_loops.mjs')
+
+// The regions that ARE the kernel. Everything archetype-specific lives outside them, so a filled
+// driver may freely edit Config and delete the four MODES blocks it did not pick — and these four
+// regions must still hash identically to the template's. Marker lines are matched by prefix.
+//
+// `schemas` covers the knob check and every schema between it and MODES, and it is here because the
+// kernel's guarantees are not all written in the kernel. The closed enums the counters are BUILT from
+// live there — SEVERITIES, FINDINGS and the criterion statuses are read out of those schemas, and
+// `fromVerdict` narrows a verdict to exactly the keys they declare. A filled driver that widened
+// VERDICT_SCHEMA, or deleted `additionalProperties: false`, or dropped the knob check that refuses
+// DRY_ROUNDS = 0, would have passed a three-region DESCENT with the kernel byte-identical and every
+// guarantee that kernel makes disarmed one screen above it. Nothing in this span is a knob: TIER, the
+// one thing a run is meant to tune, was moved up into Config so this region could close.
+const REGIONS = [
+  ['schemas', '// ---- Knob check', '// ---- MODES'],
+  ['kernel', '// ---- Kernel', '// ---- Terminal status'],
+  ['terminal-status', '// ---- Terminal status', '// ---- shared helpers'],
+  ['shared-helpers', '// ---- shared helpers', null], // null ⇒ to end of file
+]
+
+// The intake. Each heading is a question the skill must have ASKED, not guessed. The gate is
+// presence of the heading plus a non-empty answer under it — it cannot judge whether the answer is
+// good, only that a human was given the chance to give one.
+const BRIEF_SECTIONS = [
+  'Destination',        // what reaching the end looks like, in the user's own words
+  'Archetype',          // which of the five, and why the two knobs point there
+  'Atom',               // the unit counted, and how a SEPARATE agent passes it
+  'Stop',               // the terminal predicate, as a predicate — not a round count
+  'Evidence',           // what the user will SEE each round: the hero slot's contract
+  'Autonomy',           // checkpointed | autonomous, and the budget ceiling
+]
+
+const args = process.argv.slice(2)
+const flagIx = args.indexOf('--workbench')
+const workbench = flagIx >= 0 ? args[flagIx + 1] : 'http://127.0.0.1:8787'
+const positional = flagIx < 0 ? args : args.filter((a, i) => i !== flagIx && i !== flagIx + 1)
+if (positional.length < 2) {
+  console.error('usage: preflight_launch.mjs <driver.js> <ledger-dir> [--workbench URL]')
+  process.exit(2)
+}
+const driverPath = resolve(positional[0])
+const ledgerDir = resolve(positional[1])
+
+const fails = []
+const notes = []
+const fail = (gate, msg) => fails.push(`${gate}: ${msg}`)
+
+// ---- normalise + hash a marker-delimited region ------------------------------------------
+// Trailing whitespace and blank lines are noise; comment TEXT is not — the invariants are written
+// in the comments, so a driver that strips them has stripped the reasoning that makes the code
+// reviewable, and that counts as divergence.
+function region(src, startPrefix, endPrefix, label, where) {
+  const lines = src.split('\n')
+  const a = lines.findIndex(l => l.startsWith(startPrefix))
+  if (a < 0) return { err: `region '${label}' not found in ${where} (missing marker '${startPrefix}')` }
+  const rest = lines.slice(a + 1)
+  const rel = endPrefix === null ? rest.length : rest.findIndex(l => l.startsWith(endPrefix))
+  if (rel < 0) return { err: `region '${label}' unterminated in ${where} (missing marker '${endPrefix}')` }
+  const body = rest.slice(0, rel).map(l => l.replace(/\s+$/, '')).filter(l => l.length > 0)
+  if (body.length === 0) return { err: `region '${label}' is empty in ${where}` }
+  return { hash: createHash('sha256').update(body.join('\n')).digest('hex').slice(0, 16), lines: body.length }
+}
+
+// ---- SELFCHECK: the stop logic is code, so it is tested as code ---------------------------
+try {
+  execFileSync(process.execPath, [SELFCHECK], { stdio: 'pipe' })
+  notes.push('selfcheck: GREEN')
+} catch (e) {
+  fail('SELFCHECK', `scripts/selfcheck_loops.mjs exited ${e.status ?? '?'} — the kernel's own invariants do not hold; fix that before any run`)
+}
+
+// ---- DESCENT + FILLED ---------------------------------------------------------------------
+let driverSrc = null
+try {
+  driverSrc = readFileSync(driverPath, 'utf8')
+} catch {
+  fail('DESCENT', `cannot read driver ${driverPath}`)
+}
+if (driverSrc !== null) {
+  let templateSrc = null
+  try { templateSrc = readFileSync(TEMPLATE, 'utf8') } catch { fail('DESCENT', `cannot read template ${TEMPLATE}`) }
+
+  if (templateSrc !== null) {
+    for (const [label, start, end] of REGIONS) {
+      const want = region(templateSrc, start, end, label, 'the template')
+      const got = region(driverSrc, start, end, label, 'the driver')
+      if (want.err) { fail('DESCENT', want.err + ' — the template itself is damaged'); continue }
+      if (got.err) {
+        fail('DESCENT', got.err + '. A driver that does not carry the kernel carries none of its ' +
+          'guarantees: no counted atoms, no fail-closed verdicts, no witness gate. Start from ' +
+          'assets/loop-template.js and fill it — do not write your own driver.')
+        continue
+      }
+      if (want.hash !== got.hash) {
+        fail('DESCENT', `region '${label}' diverges from the template (template ${want.hash}/${want.lines} lines, ` +
+          `driver ${got.hash}/${got.lines} lines). The kernel is identical for every archetype; only Config and ` +
+          `the MODES block you picked are yours to edit. If the kernel genuinely needs a change, change it in ` +
+          `the template, re-run selfcheck, and re-run this.`)
+      }
+    }
+  }
+
+  // ---- the pickup document's PATH ---------------------------------------------------------
+  // `const HANDOFF` lives in Config, ABOVE every hashed region, so no region hash covers it and a
+  // filled driver could point the pickup document anywhere it liked — /tmp, another run's ledger, a
+  // file the workbench does not serve — and this gate still exited GREEN. Downstream that is not a
+  // cosmetic defect: the documentation rung latches on a HANDOFF.md that the terminal audit reads out
+  // of LEDGER_DIR, so a driver pointing HANDOFF elsewhere satisfies the gate against one file while
+  // the run's own directory keeps none. It must be DERIVED from LEDGER_DIR, exactly as LEDGER is —
+  // which is also why neither carries a fill marker.
+  //
+  // Compared against the template's own line rather than a pattern typed here, so the two cannot
+  // drift: whatever the template says the derivation is, the driver must say the same. Trailing
+  // comments and whitespace are stripped; quotes are respected, so a `//` inside the path is not
+  // mistaken for the start of a comment.
+  const codeOf = (line) => {
+    let q = null
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (q) { if (c === '\\') i++; else if (c === q) q = null }
+      else if (c === "'" || c === '"' || c === '`') q = c
+      else if (c === '/' && line[i + 1] === '/') return line.slice(0, i).replace(/\s+$/, '')
+    }
+    return line.replace(/\s+$/, '')
+  }
+  const handoffLine = (src) => {
+    const l = src.split('\n').find(x => x.startsWith('const HANDOFF ='))
+    return l === undefined ? null : codeOf(l)
+  }
+  if (templateSrc !== null) {
+    const wantH = handoffLine(templateSrc)
+    const gotH = handoffLine(driverSrc)
+    if (wantH === null) fail('DESCENT', `no 'const HANDOFF =' line in the template — the template itself is damaged`)
+    else if (gotH === null) {
+      fail('DESCENT', `the driver has no 'const HANDOFF =' line. The pickup document is what a fresh ` +
+        `agent reads when this run dies mid-flight; without it the run has no handoff to fail to write.`)
+    } else if (gotH !== wantH) {
+      fail('DESCENT', `the driver defines HANDOFF as \`${gotH}\`, not \`${wantH}\`. It must be DERIVED from ` +
+        `LEDGER_DIR exactly as LEDGER is: a handoff written outside the ledger dir is not served by the ` +
+        `workbench, is not where the next agent looks, and is not what the terminal audit reads — the ` +
+        `run would pass its documentation gate against a file nobody will ever find.`)
+    }
+  }
+
+  const placeholders = [...new Set((driverSrc.match(/<<[A-Z_]+>>/g) || []))]
+  if (placeholders.length > 0) {
+    fail('FILLED', `unfilled placeholders remain: ${placeholders.join(', ')}. Each is a knob the run ` +
+      `divides on; an unfilled one either crashes at startup or, worse, reads as a number and disarms a predicate.`)
+  }
+}
+
+// ---- BRIEF: proof the run was elicited, not assumed ---------------------------------------
+const briefPath = join(ledgerDir, 'BRIEF.md')
+if (!existsSync(briefPath)) {
+  fail('BRIEF', `${briefPath} does not exist. The brief is the record that a human was asked what ` +
+    `this run is for, what counts as done, and what they want to SEE — see SKILL.md Step 0 "Intake". ` +
+    `A loop configured from assumptions is a loop that converges on the wrong thing, confidently.`)
+} else {
+  const brief = readFileSync(briefPath, 'utf8')
+  // Sections are '## <name>' possibly with trailing words ('## Atom + verify contract').
+  const heads = [...brief.matchAll(/^##\s+(.+)$/gm)].map(m => [m[1].trim(), m.index])
+  for (const want of BRIEF_SECTIONS) {
+    const hit = heads.find(([h]) => h.toLowerCase().startsWith(want.toLowerCase()))
+    if (!hit) { fail('BRIEF', `no '## ${want}' section in BRIEF.md`); continue }
+    const after = brief.slice(hit[1]).split('\n').slice(1)
+    const nextHead = after.findIndex(l => /^##\s/.test(l))
+    const body = (nextHead < 0 ? after : after.slice(0, nextHead)).join('\n').trim()
+    if (body.length < 20) fail('BRIEF', `'## ${want}' is empty or a stub — answer it or say explicitly why it does not apply`)
+  }
+}
+
+// ---- LIVE: a workbench is serving THIS dir, right now --------------------------------------
+// Identity by NONCE, not by comparison. The obvious check — fetch progress.json and diff it against
+// the one on disk — passes against any other run's server, because the workbench SEEDS every ledger
+// with byte-identical starting content. Two directories therefore look the same at exactly the
+// moment preflight runs, and a server pointed at last week's run reads as live. Measured: that
+// version of this check returned GREEN against a deliberately wrong directory. So write a fresh
+// value here and require the server to hand it back; only the server on THIS directory can.
+const localProgress = join(ledgerDir, 'progress.json')
+if (!existsSync(localProgress)) {
+  fail('LIVE', `${localProgress} does not exist. Start the workbench first — it seeds the ledger and ` +
+    `the hero slot: python3 scripts/workbench_server.py ${ledgerDir}`)
+} else {
+  const nonce = randomUUID()
+  const noncePath = join(ledgerDir, 'preflight-nonce.txt')
+  writeFileSync(noncePath, nonce)
+  try {
+    const res = await fetch(new URL('/preflight-nonce.txt', workbench), { signal: AbortSignal.timeout(4000) })
+    // A 404 is the wrong-directory case, not the unreachable one: something answered, it just does
+    // not have the file this preflight wrote a moment ago. Say which, or the operator restarts a
+    // server that was never down.
+    if (res.status === 404) {
+      fail('LIVE', `the workbench at ${workbench} answers, but is serving a DIFFERENT directory than ` +
+        `${ledgerDir} — it is pointed at another run. Restart it on this ledger dir.`)
+    } else if (!res.ok) throw new Error(`HTTP ${res.status} for /preflight-nonce.txt`)
+    else if ((await res.text()).trim() !== nonce) {
+      fail('LIVE', `the workbench at ${workbench} is serving a DIFFERENT directory than ${ledgerDir} — ` +
+        `it is pointed at another run. The user would watch a board that never moves.`)
+    } else {
+      const idx = await fetch(new URL('/index.html', workbench), { signal: AbortSignal.timeout(4000) })
+      if (!idx.ok) fail('LIVE', `${workbench}/index.html returned HTTP ${idx.status} — the dashboard is not being served`)
+      else notes.push(`workbench: LIVE at ${workbench} on ${ledgerDir} (nonce confirmed)`)
+    }
+  } catch (e) {
+    fail('LIVE', `no workbench answering at ${workbench} (${e.message}). Start it and pass its URL: ` +
+      `python3 scripts/workbench_server.py ${ledgerDir} --port <PORT>. The URL goes to the user BEFORE the run.`)
+  }
+}
+
+// ---- verdict -------------------------------------------------------------------------------
+const ok = fails.length === 0
+for (const n of notes) console.log(`  ok    ${n}`)
+for (const f of fails) console.log(`  FAIL  ${f}`)
+if (ok) {
+  const receipt = {
+    ok: true,
+    driver: driverPath,
+    ledgerDir,
+    workbench,
+    gates: ['SELFCHECK', 'DESCENT', 'FILLED', 'BRIEF', 'LIVE'],
+    // No timestamp: this file is a record of WHAT passed, and the run's own ledger carries when.
+  }
+  writeFileSync(join(ledgerDir, 'PREFLIGHT.json'), JSON.stringify(receipt, null, 2) + '\n')
+  console.log(`\npreflight: GREEN — receipt at ${join(ledgerDir, 'PREFLIGHT.json')}`)
+  process.exit(0)
+}
+console.log(`\npreflight: ${fails.length} gate failure(s). Nothing launches until these are green.`)
+process.exit(1)

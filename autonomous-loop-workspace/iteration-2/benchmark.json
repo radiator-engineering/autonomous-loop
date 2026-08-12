@@ -1,0 +1,49 @@
+{
+  "skill_name": "autonomous-loop",
+  "iteration": 2,
+  "model": "claude-opus-4-8",
+  "note": "Iteration-2 re-runs ONLY the newly added eval-5. Evals 1-4 are unchanged and carry their iteration-1 results (with_skill 19/19, without_skill 14/19). The skill body and router were not changed in iteration-2; only the SKILL.md description was updated (advertises composition + background runs), which does not affect a subagent handed the skill path, so evals 1-4 outcomes are unchanged by construction.",
+  "runs": [
+    {
+      "eval_id": 5,
+      "eval_name": "decidability-gate-lagging-proxy",
+      "configuration": "with_skill",
+      "result": {
+        "passed": 4,
+        "total": 4,
+        "pass_rate": 1.0
+      },
+      "timing": {
+        "total_tokens": 34481,
+        "duration_ms": 75465,
+        "total_duration_seconds": 75.5
+      }
+    },
+    {
+      "eval_id": 5,
+      "eval_name": "decidability-gate-lagging-proxy",
+      "configuration": "without_skill",
+      "result": {
+        "passed": 4,
+        "total": 4,
+        "pass_rate": 1.0
+      },
+      "timing": {
+        "total_tokens": 25845,
+        "duration_ms": 73040,
+        "total_duration_seconds": 73.0
+      }
+    }
+  ],
+  "run_summary": {
+    "eval_5_delta": 0.0,
+    "discriminating": false
+  },
+  "notes": [
+    "eval-5 is NON-DISCRIMINATING at Opus 4.8: with_skill 4/4 and cold baseline 4/4. The harder lagging/gameable-metric trap did not separate the two, confirming the iteration-1 finding for eval-4 (also non-discriminating).",
+    "The cold baseline gave a strong answer on its own: it refused the naive 'loop against the live number' design, split fast proxies (Lighthouse/a11y/rubric) from the lagging outcome, flagged reward-hacking and dark patterns, and proposed an inner rubric loop + human-gated A/B outer loop. It even referenced the gauntlet-loop skill by name.",
+    "Honest conclusion: the decidability-refusal reasoning is already resident in the base model at this tier, so the decidability gate is a ROBUSTNESS/CONSISTENCY floor (guards regressions and weaker tiers), not measured lift. The skill's measured, discriminating lift is in ROUTING among enumerable / unknown-size / convergence shapes -- eval-3 (saturator vs exhauster) was the strongest discriminator in iteration-1 (5/5 vs 2/5).",
+    "Single-sample per configuration (as in iteration-1). The qualitative strength of the baseline answer makes the non-discrimination conclusion solid rather than a sampling artifact, but a multi-sample run would tighten it.",
+    "Kept eval-5 in the suite as a documented no-regression floor alongside eval-4, not removed -- it still guards the behavior on weaker models and against future skill edits."
+  ]
+}

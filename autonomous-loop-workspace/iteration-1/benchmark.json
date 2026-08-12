@@ -1,0 +1,414 @@
+{
+  "metadata": {
+    "skill_name": "autonomous-loop",
+    "skill_path": "/path/to/autonomous-loop/autonomous-loop",
+    "executor_model": "claude-opus-4-8",
+    "analyzer_model": "claude-opus-4-8",
+    "timestamp": "2026-08-09T00:00:00Z",
+    "evals_run": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "1-open-ended-routing",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 195.6,
+        "tokens": 68898,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+          "passed": true,
+          "evidence": "\"The method has exactly five loop shapes, distinguished by two knobs\" and it names Saturator, Exhauster, Converger, and Sentinel as distinct archetypes; opens with \"Don't run one 'improve the app' loop.\""
+        },
+        {
+          "text": "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+          "passed": true,
+          "evidence": "\"Flaky tests -> **Saturator, then Exhauster**\", \"Slow API routes -> **Converger** (drive to a latency bar)\", and \"Linear bug backlog -> **Exhauster** (drain a known queue)\" -- concrete candidates mapped to archetypes."
+        },
+        {
+          "text": "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+          "passed": true,
+          "evidence": "Explicit \"Decidable?\" gate per loop: flaky \"Decidable? Yes, strongly... This is an ideal loop\"; perf \"'make it faster' with no repeatable benchmark and no target is *taste*\"; backlog flags \"'The dashboard feels janky' -- *not* decidable by a loop\" and triages taste-based tickets to a deferred human pass."
+        },
+        {
+          "text": "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+          "passed": true,
+          "evidence": "\"**De-flake the test suite first**... Every other loop's definition of 'done' is 'a test passed... and nothing regressed.' If the suite is flaky, that ground truth is a coin flip\" -- picks one loop first with leverage rationale, then names deferred rest as a sequence: \"Then, in parallel... Optionally, afterward: a standing watch.\""
+        },
+        {
+          "text": "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress",
+          "passed": true,
+          "evidence": "\"**Worker != verifier.** The agent that fixes a ticket never signs off on it\" and \"**Count, don't vibe.** Progress is `tickets verified / total`... arithmetic in the driver from verified atoms. Not a model-emitted 0-1 score\"; for the chosen de-flake loop the verifier is \"a *different* agent runs the fixed test 50+ consecutive times.\""
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "1-open-ended-routing",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.8,
+        "passed": 4,
+        "failed": 1,
+        "total": 5,
+        "time_seconds": 95.8,
+        "tokens": 33217,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+          "passed": true,
+          "evidence": "Rejects the single vague loop and enumerates several distinct structured streams: 'Your repo has three genuinely different kinds of work, and each needs a different structure' (with a table for Flaky tests / Slow API routes / Bug backlog), reinforced by 'your three problems are three different problems with three different definitions of \"better.\" A single loop with one prompt can't hold all three rulers at once.' Each stream is given its own definition of done, stopping condition, and metric."
+        },
+        {
+          "text": "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+          "passed": false,
+          "evidence": "not present \u2014 the response never names or maps to loop archetypes (no 'exhauster', 'saturator', 'converger', or any archetype taxonomy). It maps candidates only to per-stream definitions of done (e.g. 'p95 latency under a target'), not to named loop archetypes."
+        },
+        {
+          "text": "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+          "passed": true,
+          "evidence": "Applies a decidability/measurability gate ('A good autonomy candidate has: a clear reproduction, a bounded surface area, and low blast radius'; 'every job has an objective, external pass/fail (CI) rather than the agent grading its own homework') and flags taste-based candidates: 'Tickets that are actually product/design decisions in disguise (\"this flow is confusing\")' and 'Anything without a reproduction' are routed to 'human-only'."
+        },
+        {
+          "text": "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+          "passed": true,
+          "evidence": "Picks flaky tests first with leverage rationale: 'Flaky tests \u2014 attack these first ... flakiness poisons every other stream. If the suite is nondeterministic, the agent can't use \"tests pass\" as a signal ... Stabilize the ruler before you measure anything with it.' Deferred rest sequenced in 'Recommended rollout order': Week 1 flaky, Week 2 slow routes, 'Week 3+: Bug backlog via Linear MCP'."
+        },
+        {
+          "text": "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress",
+          "passed": true,
+          "evidence": "Separate verifier from worker: 'CI re-runs everything on neutral infrastructure' and 'The judge is external and mechanical. CI, benchmarks, and failing-then-passing tests decide success \u2014 not the agent's self-assessment.' Counted (not model-scored) progress for the chosen loop: 'the same \u00d750 loop must now be 50/50 green' and 'number of tests that flip verdict across 25 runs \u2014 should trend to zero.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "2-exhauster-migration",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 170.9,
+        "tokens": 66078,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies this as an exhauster over a KNOWN, enumerable queue and enumerates the call sites up front",
+          "passed": true,
+          "evidence": "\"Archetype: Exhauster. The work is a *known, enumerable* list \u2014 every `logInfo(` call site is discoverable with a grep up front and the set only shrinks.\" plus \u00a73.1 \"Enumerate deterministically. `rg -n 'logInfo\\s*\\('` ... Emit `queue.json` ... pin `total` from this count in code\""
+        },
+        {
+          "text": "Defines a per-item done-criterion verified by a SEPARATE agent (compiles / type-checks / tests pass), not the worker's own say-so",
+          "passed": true,
+          "evidence": "\"A file is `verified` only when a verifier that is a *different agent than the worker*...\" with clauses \"Compiles | `tsc --noEmit` ... exits 0\", \"Tests pass\", and \"A worker never certifies its own file.\""
+        },
+        {
+          "text": "Fails closed: an unverified or failed site returns to the queue and becomes a NAMED blocked item after bounded retries, never a silent skip",
+          "passed": true,
+          "evidence": "\"it returns to the queue under `MAX_RETRIES`, and it **stays in the denominator**\"; \"A file with an unmappable call, or one whose tests keep failing after `MAX_RETRIES`, becomes a *named* blocked item.\""
+        },
+        {
+          "text": "Counts progress deterministically (done/total) and reports terminal 'blocked' if any site is unverified rather than a percentage-done success",
+          "passed": true,
+          "evidence": "\"Progress = `confirmed_files / total_files`, computed in the driver from verified verdicts.\" and \"`199/200` verified with one blocked reports **`blocked`**, not `99.5%`.\""
+        },
+        {
+          "text": "Includes a budget ceiling / model tiering and an observable ledger of item states, not just a for-loop that trusts each edit",
+          "passed": true,
+          "evidence": "\"Budget ceiling + tiering. Hard token cap with a reserve so finalize runs; cheap model for enumerate/ledger, mid for worker/verify, strong only for stuck/blocked files.\" plus \u00a77 \"Every round writes `progress.json`: `files done / total`, the in-flight batch ... the **blocked list**.\""
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "2-exhauster-migration",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.8,
+        "passed": 4,
+        "failed": 1,
+        "total": 5,
+        "time_seconds": 138.3,
+        "tokens": 35911,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies this as an exhauster over a KNOWN, enumerable queue and enumerates the call sites up front",
+          "passed": true,
+          "evidence": "Phase 0.1 'Inventory the call sites' enumerates a known queue up front: 'rg -n --json 'logInfo|logWarn|logError|logDebug' > inventory.raw.json', classifies into buckets, gives counts ('130 A/B, 55 C/D, 15 E/F/G'), and 'Save this as inventory.json - it becomes the worklist.' This is an exhauster over a KNOWN, enumerable queue."
+        },
+        {
+          "text": "Defines a per-item done-criterion verified by a SEPARATE agent (compiles / type-checks / tests pass), not the worker's own say-so",
+          "passed": true,
+          "evidence": "Per-item protocol step 4-5: 'Run tsc + lint + the file's tests. ... If green -> mark done'; done is gated on objective checks, explicitly contrasted with self-report ('far more reliable than the model reporting \"I did all 200.\"'), plus an automated invariant gate: 'Any site that drops a value fails the gate automatically.'"
+        },
+        {
+          "text": "Fails closed: an unverified or failed site returns to the queue and becomes a NAMED blocked item after bounded retries, never a silent skip",
+          "passed": true,
+          "evidence": "'If it can't be made green in N=2 attempts -> mark escalated with a one-line reason, leave a // TODO(log-migration): <reason> marker, and move on ... You end up with a small, explicitly-flagged pile to review instead of a silent landmine buried in 200 files.' Bounded retries then a NAMED blocked item, never a silent skip."
+        },
+        {
+          "text": "Counts progress deterministically (done/total) and reports terminal 'blocked' if any site is unverified rather than a percentage-done success",
+          "passed": true,
+          "evidence": "'the count of violations is your burn-down chart; at the end, zero violations is the objective, un-gameable definition of \"done.\"' plus 'measure progress against a fixed denominator'; status enum {pending, done, escalated, failed}; Phase 4 'Objective completion: the ban-lint reports zero logInfo references. Denominator matched.' Completion is binary (zero remaining) with escalated pile surfaced, not a percentage-done success."
+        },
+        {
+          "text": "Includes a budget ceiling / model tiering and an observable ledger of item states, not just a for-loop that trusts each edit",
+          "passed": false,
+          "evidence": "Observable ledger is present ('status in {pending, done, escalated, failed}', 'state lives in a file, the run is crash-safe and resumable'), but there is no budget ceiling or model tiering. Stop conditions are only quality/retry bounds ('N attempts', 'Escalation count exceeds a threshold (say >15% of a bucket)'), not a resource/token/iteration budget cap, and the codemod-vs-model split is approach tiering, not model tiering. No mention of a budget ceiling or routing to different model tiers."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "3-saturator-pii",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 254.0,
+        "tokens": 71952,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+          "passed": true,
+          "evidence": "\"Archetype: Saturator.\" ... \"the count is unknown up front \u2014 finding the members *is* the work, so this is a search over an unknown-size set, not a known queue.\""
+        },
+        {
+          "text": "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+          "passed": true,
+          "evidence": "\"Frontier: heterogeneous *finders*, each searching a different way (by log-sink API, by grep pattern, by dataflow ... )\"; \u00a72 lists 8 distinct lenses (by-sink, by-pattern, by-dataflow, by-schema, by-serialization, by-config, by-diff, by-runtime)."
+        },
+        {
+          "text": "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+          "passed": true,
+          "evidence": "\"Verify: a separate, adversarial agent tries to refute it ... and passes only if the finding survives\"; \"Verify contract (a *different* agent, adversarial). The verifier never sees the finder's reasoning.\""
+        },
+        {
+          "text": "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+          "passed": true,
+          "evidence": "\"Stop predicate: DRY_ROUNDS = 3 consecutive rounds in which no lens surfaces a new confirmed finding\"; \"a candidate the verifier refutes is still written to seen ... dedup against seen, never against confirmed\"."
+        },
+        {
+          "text": "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once",
+          "passed": true,
+          "evidence": "\"a search over an unknown-size set, not a known queue\"; \"looping until none of them find anything new for 3 rounds, is a far stronger signal than one pass.\""
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "3-saturator-pii",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.4,
+        "passed": 2,
+        "failed": 3,
+        "total": 5,
+        "time_seconds": 162.6,
+        "tokens": 37585,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies this as a saturator over an UNKNOWN-size set (finding the members IS the work; not enumerable up front)",
+          "passed": false,
+          "evidence": "Response makes the set enumerable up front, opposite of the assertion: 'The set of ways this codebase writes to a log is finite and enumerable' and 'over a finite, fully-enumerated set of log call sites. The finiteness of the sink surface is the lever that turns \"find everything\" from hopeless into measurable.' Its core move is 'enumerate the sinks.'"
+        },
+        {
+          "text": "Uses heterogeneous finders / multiple distinct search lenses rather than a single grep or one-shot search",
+          "passed": true,
+          "evidence": "'Layer independent detectors (taint, heuristics, literals, runtime NER) so their union maximizes recall'; each has 'a different false-negative profile'; explicitly rejects single-grep: 'The mistake most PII scans make is to search for PII (grep ... regex) ... We invert it.'"
+        },
+        {
+          "text": "Adversarially verifies each candidate with a separate agent (tries to refute it) before it counts as a finding",
+          "passed": false,
+          "evidence": "Not present. Verification is confidence tiers ('high = taint source->sink ... medium = heuristic') and static<->runtime cross-check (corroboration/ground truth), not a separate agent adversarially trying to refute each candidate before it counts."
+        },
+        {
+          "text": "Stop rule is K consecutive dry rounds with no new confirmed findings, and dedups against everything SEEN (not just confirmed)",
+          "passed": false,
+          "evidence": "Stop rule is coverage-anchored ('sink-surface coverage = 100%; canary recall >= target; marginal detector yield flat over the last N sweeps ...'); dedup is 'fingerprint = (file, sink, pii-class, detector)' / 'the same site isn't re-reported' -- not an explicit 'dedup against everything SEEN (not just confirmed)' mechanism."
+        },
+        {
+          "text": "Does NOT model the task as a fixed queue or a one-pass search that stops after looking once",
+          "passed": true,
+          "evidence": "'Autonomy = three cadences (PR gate, nightly sweep, always-on runtime monitor)'; 'this confidence is maintained, not just achieved once'; 'the runtime monitor and canaries never stop' -- not a one-pass/fixed-queue model."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "eval_name": "4-decidability-gate",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 199.0,
+        "tokens": 68753,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Recognizes the atom ('feels premium' / 'until it's great') is a taste judgment with no externally checkable signal",
+          "passed": true,
+          "evidence": "\"its atom \u2014 'premium / great' \u2014 is undecidable as written. There is no test, measurement, reference, or reproducible check a *separate* agent can use to pass 'this feels premium'\"; Bucket C: \"irreducibly subjective... 'Does this *feel* aspirational to our target buyer?' No tool and no reference-diff grounds this.\""
+        },
+        {
+          "text": "Does NOT immediately spin up an autonomous convergence loop against the vague goal",
+          "passed": true,
+          "evidence": "\"So the plan is not 'here is a loop that runs until it feels premium.' The plan is: make 'premium' decidable first, then the loop is easy and safe.\" and \"Gate verdict: As stated, undecidable \u2014 stop.\" Also requires confirming the brief and a dry-run of one round before spending budget."
+        },
+        {
+          "text": "Offers the honest options: build the measurement first (a concrete reference + measurable criteria like a pixel/contrast/Lighthouse rubric) OR a bounded polish pass that won't truly 'converge'",
+          "passed": true,
+          "evidence": "\"option 1: build the missing measurement first. Buckets A+B are that measurement\" (Lighthouse/axe/contrast/pixel-diff rubric) ... \"option 2 is a bounded best-effort polish pass \u2014 same builders, but it stops on the round cap, not an earned bar, and I will label the output 'polished,' not 'converged.'\""
+        },
+        {
+          "text": "Explains WHY looping on an unmeasurable target fails (drift, reward-hacking / gaming its own judgment, burns budget without direction)",
+          "passed": true,
+          "evidence": "\"an autonomous loop pointed straight at it would do exactly what ungrounded loops always do: drift, congratulate itself, and burn a large budget polishing taste before declaring a green 'great' it never earned.\" and \"self-critique with no external signal flips correct work to wrong more than the reverse.\""
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "eval_name": "4-decidability-gate",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 129.1,
+        "tokens": 35573,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Recognizes the atom ('feels premium' / 'until it's great') is a taste judgment with no externally checkable signal",
+          "passed": true,
+          "evidence": "\"'Feel more premium and high-end' \u2014 a subjective, aesthetic target\" and \"'Until it's great' is not a condition a machine \u2014 or a model judging its own work \u2014 can evaluate reliably\"; also \"Aesthetics can't be reduced to a number cleanly\" and \"Aesthetic 'greatness' is not fully machine-decidable.\" Directly recognizes it as a taste judgment lacking an externally checkable signal."
+        },
+        {
+          "text": "Does NOT immediately spin up an autonomous convergence loop against the vague goal",
+          "passed": true,
+          "evidence": "Instead of iterating against the vague goal, its first move is \"Operationalize 'premium' before writing any code\" and \"the central design decision is: operationalize 'great' into a gate.\" The loop runs against a concrete rubric/reference, and \"What I'd do first\" begins with a kickoff to \"Agree the reference bar, rubric weights, and brand invariants\" \u2014 not spinning up a loop on the raw goal."
+        },
+        {
+          "text": "Offers the honest options: build the measurement first (a concrete reference + measurable criteria like a pixel/contrast/Lighthouse rubric) OR a bounded polish pass that won't truly 'converge'",
+          "passed": true,
+          "evidence": "Builds measurement first: \"Pick 2\u20133 exemplar landing pages... store them as immutable reference assets\", plus \"Lighthouse: Performance \u2265 95\" and \"Contrast: all text \u2265 WCAG AA\". Honest about non-convergence via bounded budget: \"max_iterations reached (e.g., 12)\" and \"In the budget-exhausted case the loop does NOT claim 'great.' It stops, reports the best candidate, and lists the specific rubric gaps that remain, for a human to decide.\""
+        },
+        {
+          "text": "Explains WHY looping on an unmeasurable target fails (drift, reward-hacking / gaming its own judgment, burns budget without direction)",
+          "passed": true,
+          "evidence": "\"It stops arbitrarily early... It runs forever, or until the token budget dies, churning sideways without converging. It games its own judge \u2014 it learns that certain phrasings or flourishes make its self-critique say 'great,' and optimizes for the judge rather than the page.\" Covers drift, reward-hacking, and burning budget without direction."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 204.875,
+        "stddev": 30.3649,
+        "min": 170.9,
+        "max": 254.0
+      },
+      "tokens": {
+        "mean": 68920.25,
+        "stddev": 2079.5649,
+        "min": 66078,
+        "max": 71952
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.75,
+        "stddev": 0.2179,
+        "min": 0.4,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 131.45,
+        "stddev": 23.9462,
+        "min": 95.8,
+        "max": 162.6
+      },
+      "tokens": {
+        "mean": 35571.5,
+        "stddev": 1558.2935,
+        "min": 33217,
+        "max": 37585
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.2500",
+      "time_seconds": "+73.4",
+      "tokens": "+33349"
+    }
+  },
+  "notes": [
+    "Assertion-pooled pass rate: with_skill 19/19 (100%), without_skill 14/19 (74%). No assertion regressed under the skill.",
+    "eval-3 (saturator/PII) is the strongest discriminator: +3 of the +5 assertion gap. The baseline mis-routed the archetype \u2014 it treated an unknown-size search as an enumerable set \u2014 which is exactly the exhauster-vs-saturator distinction router.md calls the single most decisive one. It also missed adversarial-refute verification and dedup-against-SEEN.",
+    "eval-4 (decidability gate) is non-discriminating at Opus 4.8: both configs 4/4. A capable baseline already refuses the undecidable 'make it premium until great' loop and operationalizes it first. Keep it as a no-regression floor; it does not demonstrate lift. Harden it in a future iteration (require the structured brief, or run a weaker tier where the gate is likelier skipped).",
+    "The baseline's misses cluster in two dimensions: shared taxonomy/vocabulary (eval-1 idx1: never names archetypes) and kernel completeness a from-scratch design forgets (eval-2 idx4: no budget ceiling/tiering; eval-3 idx2/3). Opus 4.8 already reasons well about worker!=verifier, counted progress, decidability, and fail-closed from first principles, so the skill's marginal value concentrates in routing correctness + naming + the specific guardrails, not in teaching the basics.",
+    "Cost of the skill on this design task: +73s wall-clock and +33349 tokens per invocation (reads SKILL.md + reference files, writes a longer structured design). Reasonable for planning. Unmeasured here is the skill's real budget win at RUN time: preventing mis-routed multi-hour autonomous loops."
+  ]
+}

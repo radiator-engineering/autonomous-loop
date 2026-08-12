@@ -1,0 +1,12 @@
+{
+  "eval_id": 1,
+  "eval_name": "1-open-ended-routing",
+  "prompt": "Here's my web app repo \u2014 Next.js, it has a Jest test suite (a handful of tests are flaky), a couple of slow API routes, and a growing backlog of bug tickets in Linear. I want to set Claude loose to improve it autonomously but I'm honestly not sure how to structure that. What should I actually run, and why?",
+  "assertions": [
+    "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+    "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+    "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+    "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+    "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Enumerates several distinct loop shapes / archetypes rather than proposing one vague 'keep improving it' loop",
+      "passed": true,
+      "evidence": "Rejects the single vague loop and enumerates several distinct structured streams: 'Your repo has three genuinely different kinds of work, and each needs a different structure' (with a table for Flaky tests / Slow API routes / Bug backlog), reinforced by 'your three problems are three different problems with three different definitions of \"better.\" A single loop with one prompt can't hold all three rulers at once.' Each stream is given its own definition of done, stopping condition, and metric."
+    },
+    {
+      "text": "Maps the concrete candidates to archetypes (e.g. bug backlog or flaky tests -> exhauster; find-all-slow-paths -> saturator; a route to a latency bar -> converger)",
+      "passed": false,
+      "evidence": "not present \u2014 the response never names or maps to loop archetypes (no 'exhauster', 'saturator', 'converger', or any archetype taxonomy). It maps candidates only to per-stream definitions of done (e.g. 'p95 latency under a target'), not to named loop archetypes."
+    },
+    {
+      "text": "Applies a decidability/measurability gate and prefers a candidate with a checkable atom; flags any taste-based candidate",
+      "passed": true,
+      "evidence": "Applies a decidability/measurability gate ('A good autonomy candidate has: a clear reproduction, a bounded surface area, and low blast radius'; 'every job has an objective, external pass/fail (CI) rather than the agent grading its own homework') and flags taste-based candidates: 'Tickets that are actually product/design decisions in disguise (\"this flow is confusing\")' and 'Anything without a reproduction' are routed to 'human-only'."
+    },
+    {
+      "text": "Picks ONE loop to run first with a leverage rationale and names the deferred rest as a sequence",
+      "passed": true,
+      "evidence": "Picks flaky tests first with leverage rationale: 'Flaky tests \u2014 attack these first ... flakiness poisons every other stream. If the suite is nondeterministic, the agent can't use \"tests pass\" as a signal ... Stabilize the ruler before you measure anything with it.' Deferred rest sequenced in 'Recommended rollout order': Week 1 flaky, Week 2 slow routes, 'Week 3+: Bug backlog via Linear MCP'."
+    },
+    {
+      "text": "Specifies the kernel for the chosen loop: a separate verifier from the worker and counted (not model-scored) progress",
+      "passed": true,
+      "evidence": "Separate verifier from worker: 'CI re-runs everything on neutral infrastructure' and 'The judge is external and mechanical. CI, benchmarks, and failing-then-passing tests decide success \u2014 not the agent's self-assessment.' Counted (not model-scored) progress for the chosen loop: 'the same \u00d750 loop must now be 50/50 green' and 'number of tests that flip verdict across 25 runs \u2014 should trend to zero.'"
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 1,
+    "total": 5,
+    "pass_rate": 0.8
+  },
+  "timing": {
+    "total_tokens": 33217,
+    "duration_ms": 95850,
+    "total_duration_seconds": 95.8
+  }
+}

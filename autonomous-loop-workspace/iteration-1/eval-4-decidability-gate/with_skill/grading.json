@@ -1,0 +1,35 @@
+{
+  "expectations": [
+    {
+      "text": "Recognizes the atom ('feels premium' / 'until it's great') is a taste judgment with no externally checkable signal",
+      "passed": true,
+      "evidence": "\"its atom \u2014 'premium / great' \u2014 is undecidable as written. There is no test, measurement, reference, or reproducible check a *separate* agent can use to pass 'this feels premium'\"; Bucket C: \"irreducibly subjective... 'Does this *feel* aspirational to our target buyer?' No tool and no reference-diff grounds this.\""
+    },
+    {
+      "text": "Does NOT immediately spin up an autonomous convergence loop against the vague goal",
+      "passed": true,
+      "evidence": "\"So the plan is not 'here is a loop that runs until it feels premium.' The plan is: make 'premium' decidable first, then the loop is easy and safe.\" and \"Gate verdict: As stated, undecidable \u2014 stop.\" Also requires confirming the brief and a dry-run of one round before spending budget."
+    },
+    {
+      "text": "Offers the honest options: build the measurement first (a concrete reference + measurable criteria like a pixel/contrast/Lighthouse rubric) OR a bounded polish pass that won't truly 'converge'",
+      "passed": true,
+      "evidence": "\"option 1: build the missing measurement first. Buckets A+B are that measurement\" (Lighthouse/axe/contrast/pixel-diff rubric) ... \"option 2 is a bounded best-effort polish pass \u2014 same builders, but it stops on the round cap, not an earned bar, and I will label the output 'polished,' not 'converged.'\""
+    },
+    {
+      "text": "Explains WHY looping on an unmeasurable target fails (drift, reward-hacking / gaming its own judgment, burns budget without direction)",
+      "passed": true,
+      "evidence": "\"an autonomous loop pointed straight at it would do exactly what ungrounded loops always do: drift, congratulate itself, and burn a large budget polishing taste before declaring a green 'great' it never earned.\" and \"self-critique with no external signal flips correct work to wrong more than the reverse.\""
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 0,
+    "total": 4,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "total_tokens": 68753,
+    "duration_ms": 198980,
+    "total_duration_seconds": 199.0
+  }
+}

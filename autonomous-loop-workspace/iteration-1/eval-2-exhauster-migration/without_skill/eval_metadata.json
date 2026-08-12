@@ -1,0 +1,12 @@
+{
+  "eval_id": 2,
+  "eval_name": "2-exhauster-migration",
+  "prompt": "We need to migrate all ~200 call sites from our old logInfo() logging helper to the new structured log.info({...}) API. I want to set it up so Claude can grind through the whole thing autonomously and I can actually trust the result at the end. How should this be structured?",
+  "assertions": [
+    "Identifies this as an exhauster over a KNOWN, enumerable queue and enumerates the call sites up front",
+    "Defines a per-item done-criterion verified by a SEPARATE agent (compiles / type-checks / tests pass), not the worker's own say-so",
+    "Fails closed: an unverified or failed site returns to the queue and becomes a NAMED blocked item after bounded retries, never a silent skip",
+    "Counts progress deterministically (done/total) and reports terminal 'blocked' if any site is unverified rather than a percentage-done success",
+    "Includes a budget ceiling / model tiering and an observable ledger of item states, not just a for-loop that trusts each edit"
+  ]
+}

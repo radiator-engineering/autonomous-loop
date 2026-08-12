@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<!--
+  Autonomous-loop workbench — live progress surface for a running (or finished) loop of any archetype.
+  Zero dependencies, no build step. Reads two files from the same directory:
+    ./progress.json   — the live ledger for THIS run (schema: references/observability.md)
+    ./runs.jsonl      — one summary line per run, for the longitudinal view (optional)
+  Serve the directory with scripts/workbench_server.py (handles no-cache + artifacts + the
+  .gitignore and the render prune), or open over file:// (some browsers block fetch over file://;
+  the server is preferred). Auto-refreshes while status === "running".
+
+  The board LEADS WITH THE CURRENT ARTIFACT — progress.json's `hero` is rendered large at the top,
+  with round 1's pinned beside it as the permanent BEFORE and the commit each side actually ran
+  printed underneath; counters go below. A loop with no picture must say so via hero.type="none"
+  plus a note. Counters tell you the loop is alive; only the artifact tells you it is working.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autonomous Loop Workbench</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --ink:#e6e9ef; --muted:#9aa4b2;
+    --line:#2a2f3a; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+  .sub { color:var(--muted); font-size:12px; }
+  .badge { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .b-running{ background:#1f6feb33; color:var(--accent); } .b-converged{ background:#3fb95033; color:var(--ok); }
+  .b-stopped{ background:#d2992233; color:var(--warn); } .b-budget{ background:#f8514933; color:var(--bad); }
+  .b-backstop{ background:#f8514933; color:var(--bad); }
+  /* A failed REPORTING gate (`unwitnessed` / `undocumented`): the run's atoms are fine, the board is
+     not. Deliberately unlike both the amber stop and the red blocker — outlined, striped, and the one
+     badge on this page that never reads as an ordinary ending. */
+  .b-ungated{ color:#d2a8ff; border:1px solid #d2a8ff88; background:
+    repeating-linear-gradient(135deg,#d2a8ff22 0 6px,#d2a8ff0d 6px 12px); }
+  .tabs { display:flex; gap:8px; padding:12px 22px 0; }
+  .tab { padding:7px 14px; border-radius:8px 8px 0 0; cursor:pointer; color:var(--muted); }
+  .tab.active { background:var(--panel); color:var(--ink); }
+  main { padding:18px 22px; }
+  .grid { display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 12px; }
+  .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+  .stat:last-child{ border:0; }
+  .stat b { font-variant-numeric:tabular-nums; }
+  .round { background:var(--panel2); border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .round summary { cursor:pointer; padding:12px 16px; display:flex; gap:14px; align-items:center; list-style:none; }
+  .round summary::-webkit-details-marker{ display:none; }
+  .rnum { font-weight:700; color:var(--accent); min-width:64px; }
+  .bar { flex:1; height:8px; background:#0d1017; border-radius:99px; overflow:hidden; }
+  .bar>i { display:block; height:100%; background:linear-gradient(90deg,#1f6feb,#3fb950); }
+  .rbody { padding:0 16px 16px; }
+  .finding { padding:8px 10px; border-radius:8px; margin:6px 0; background:#0d1017; border-left:3px solid var(--line); }
+  .sev-blocker{ border-color:var(--bad);} .sev-major{ border-color:var(--warn);} .sev-minor{ border-color:var(--muted);}
+  .finding .c{ font-weight:600;} .finding .m{ color:var(--muted); font-size:12.5px; }
+  /* The hero: the board leads with the CURRENT artifact, large, above every counter. */
+  .hero .frames { display:flex; gap:14px; align-items:flex-start; }
+  .hero figure { margin:0; flex:1 1 0; min-width:0; }
+  .hero img, .hero video { display:block; width:100%; height:auto; border:1px solid var(--line);
+    border-radius:8px; background:#0d1017; }
+  .hero figcaption { margin-top:6px; font-size:12px; color:var(--muted); }
+  .sha { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .nosha { color:var(--warn); }
+  .noart { padding:24px; border:1px dashed var(--warn); border-radius:10px; background:#d2992211; }
+  .noart b { color:var(--warn); display:block; margin-bottom:6px; }
+  .strip { display:flex; gap:8px; overflow-x:auto; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .strip figure { margin:0; flex:0 0 auto; width:124px; }
+  .strip img, .strip video { display:block; width:124px; height:auto; border:1px solid var(--line); border-radius:6px; }
+  .strip figcaption { margin-top:3px; font-size:11px; color:var(--muted); text-align:center; }
+  .arts { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+  .art { border:1px solid var(--line); border-radius:8px; overflow:hidden; max-width:240px; background:#0d1017; }
+  .art img, .art video { display:block; max-width:240px; height:auto; }
+  .art .cap { padding:5px 8px; font-size:12px; color:var(--muted); }
+  .art pre { margin:0; padding:8px; max-width:240px; max-height:160px; overflow:auto; font-size:11px; color:var(--muted); }
+  svg { width:100%; height:220px; display:block; }
+  .muted{ color:var(--muted); } .empty{ color:var(--muted); padding:30px; text-align:center; }
+  .backstop { padding:2px 8px; border-radius:999px; border:1px solid #f8514966; background:#f8514922;
+    color:var(--bad); font-size:11px; font-weight:600; letter-spacing:.3px; white-space:nowrap; }
+  #backstop:empty { display:none; }   /* else the empty slot still spends a header gap */
+  #hist .runrow { display:flex; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
+  #hist .spark { flex:1; height:34px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="target">Autonomous Loop Workbench</h1>
+    <div class="sub" id="bar">waiting for progress.json…</div>
+  </div>
+  <span class="badge b-running" id="status">–</span>
+  <span id="backstop"></span>
+  <div class="sub" id="clock"></div>
+  <div class="sub" id="refresh" style="margin-left:auto"></div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="live">Live run</div>
+  <div class="tab" data-tab="hist">History</div>
+</div>
+
+<main>
+  <section id="live">
+    <!-- Rule 1 of references/observability.md: the artifact comes first, the counters come after. -->
+    <div class="panel hero"><h2>Current artifact</h2>
+      <div id="herobody"><div class="empty">waiting for progress.json…</div></div></div>
+    <div class="grid" style="margin-top:18px">
+      <div>
+        <div class="panel"><h2>Score trajectory</h2><svg id="chart"></svg></div>
+        <div class="panel" style="margin-top:18px"><h2>Rounds</h2><div id="rounds"><div class="empty">No rounds yet.</div></div></div>
+      </div>
+      <aside>
+        <div class="panel"><h2>Run</h2><div id="runstats"></div></div>
+        <div class="panel" style="margin-top:18px"><h2>Budget</h2><div id="budget"></div></div>
+        <div class="panel" style="margin-top:18px"><h2>Model spend</h2><div id="spend"></div></div>
+      </aside>
+    </div>
+  </section>
+  <section id="hist" hidden>
+    <div class="panel"><h2>Runs over time</h2><div id="histbody"><div class="empty">No runs.jsonl found.</div></div></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let timer = null;
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const tab = t.dataset.tab;
+  $('#live').hidden = tab !== 'live'; $('#hist').hidden = tab !== 'hist';
+  if (tab === 'hist') loadHistory();
+});
+
+function badge(status){
+  // Positive terminal for every archetype → green; blockers/budget → red; caps/plateaus and a stop
+  // that answered nothing (`inconclusive`) → amber; a FAILED REPORTING GATE gets its own treatment.
+  // Every status is mapped explicitly: a negative one falling through to the default is how a bad
+  // ending renders as a benign one — and it did. `unwitnessed` and `undocumented` were both missing
+  // here, so a run that verified everything and showed a human nothing rendered in the same amber as
+  // a benign `stopped`, on the board that exists to reveal exactly that. They are not amber and not
+  // red: they are the two statuses that say THIS BOARD IS LYING TO YOU — the picture or the pickup
+  // document is not there — so they get a distinct outlined badge that reads as neither.
+  // The parity between this map and the statuses the template can emit is CHECKED, by
+  // scripts/selfcheck_loops.mjs. A comment asking for parity is what failed the first time.
+  const map={running:'b-running',
+    converged:'b-converged',drained:'b-converged',saturated:'b-converged',answered:'b-converged',held:'b-converged',
+    blocked:'b-budget',budget_exhausted:'b-budget',runaway_backstop:'b-backstop',
+    unwitnessed:'b-ungated',undocumented:'b-ungated',
+    capped:'b-stopped',stopped:'b-stopped',inconclusive:'b-stopped'};
+  const el=$('#status'); el.className='badge '+(map[status]||'b-stopped'); el.textContent=(status||'unknown').replace('_',' ');
+}
+// Blocker/budget precedence outranks `runaway_backstop`, and a sentinel's `held` is positive at any
+// length — so the status alone never says a run hit the rail.
+function backstopHTML(hit){ return hit===true
+  ? '<span class="backstop" title="reached RUNAWAY_BACKSTOP — a defect signal, not a finish">hit backstop</span>' : ''; }
+function fmt(n){ return (n===undefined||n===null)?'–':(typeof n==='number'?(Number.isInteger(n)?n.toLocaleString():n.toFixed(3)):n); }
+function elapsed(from){ if(!from) return ''; const s=Math.max(0,(Date.now()-new Date(from))/1000);
+  const h=Math.floor(s/3600),m=Math.floor(s%3600/60); return h?`${h}h ${m}m`:`${m}m ${Math.floor(s%60)}s`; }
+
+function chart(rounds, threshold){
+  const svg=$('#chart'), W=640,H=220,pad=30; svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  if(!rounds.length){ svg.innerHTML=`<text x="${W/2}" y="${H/2}" fill="#9aa4b2" text-anchor="middle">no data</text>`; return; }
+  const xs=rounds.map((_,i)=>pad+i*(W-2*pad)/Math.max(1,rounds.length-1));
+  const y=v=>H-pad-v*(H-2*pad);
+  const line=(color,accessor)=>{ let d=''; rounds.forEach((r,i)=>{ const v=accessor(r); if(v==null)return; d+=(d?'L':'M')+xs[i]+' '+y(v); });
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"/>`; };
+  let g=`<line x1="${pad}" y1="${y(threshold)}" x2="${W-pad}" y2="${y(threshold)}" stroke="#3fb95055" stroke-dasharray="4 4"/>`;
+  g+=`<text x="${W-pad}" y="${y(threshold)-4}" fill="#3fb95099" text-anchor="end" font-size="11">bar ${threshold}</text>`;
+  g+=line('#58a6ff', r=>r.composite);
+  rounds.forEach((r,i)=>{ g+=`<circle cx="${xs[i]}" cy="${y(r.composite)}" r="3.5" fill="#58a6ff"/>`;
+    g+=`<text x="${xs[i]}" y="${H-8}" fill="#9aa4b2" text-anchor="middle" font-size="10">${r.round}</text>`; });
+  svg.innerHTML=g;
+}
+
+function findingHTML(f){ return `<div class="finding sev-${f.severity||'minor'}">
+  <div class="c">${esc(f.criterion||'')} <span class="m">— ${esc(f.region||'')}</span></div>
+  <div class="m">measured ${esc(f.measured||'?')} · target ${esc(f.target||'?')}</div>
+  ${f.fix?`<div class="m">→ ${esc(f.fix)}</div>`:''}</div>`; }
+
+// ── The hero ────────────────────────────────────────────────────────────────────────────────────
+// Counters tell you the loop is alive; only the artifact tells you it is working. Lanes here have
+// gone green, committed and reached no frame at all, so this slot renders the newest capture at full
+// width with round 1's beside it, and NEVER renders empty.
+// The commit under each frame must come from the running code (git rev-parse in the process that
+// produced it). A page here took `label=BEFORE` as a URL parameter, kept rendering as the code moved
+// on, and pinned a defect on the wrong commit for weeks — so an absent sha is shown as unknown
+// rather than quietly accepted.
+function sha(c){ return c ? `<span class="sha">${esc(String(c).slice(0,10))}</span>`
+                          : '<span class="nosha">commit unknown</span>'; }
+function frameHTML(f, fallbackType){
+  const media = (f.type||fallbackType)==='video'
+    ? `<video src="${esc(f.path)}" autoplay loop muted playsinline controls></video>`
+    : `<img src="${esc(f.path)}" loading="lazy">`;
+  return `<figure>${media}<figcaption>${esc(f.label||'')} · ${sha(f.commit)}</figcaption></figure>`;
+}
+function heroHTML(d){
+  const h = d.hero;
+  if(!h || h.type==='none' || !h.path) return `<div class="noart"><b>No visual evidence this round.</b>
+    ${esc((h&&h.note) || 'This loop declared no hero artifact. Set progress.json → hero, or set hero.type="none" with a note naming exactly what would be needed to produce a picture. An absent picture must never read as "nothing to show".')}</div>`;
+  const pair = h.before && h.before.path;
+  const frames = [];
+  if(pair) frames.push(frameHTML({ path:h.before.path, type:h.before.type||h.type, commit:h.before.commit,
+    label:'BEFORE · '+(h.before.label||'round 1') }, h.type));
+  frames.push(frameHTML({ ...h, label:(pair?'NOW · ':'')+(h.label||'current') }, h.type));
+  const framing = h.framing
+    ? `<div class="sub" style="margin-top:10px">framing spec <a href="${esc(h.framing)}" style="color:#58a6ff">${esc(h.framing)}</a> — same camera, distance, subject, seed and phase every round</div>`
+    : `<div class="sub nosha" style="margin-top:10px">no framing spec on disk — rounds shot to a re-derived framing are not comparable</div>`;
+  return `<div class="frames">${frames.join('')}</div>${framing}`;
+}
+// Same framing every round ⇒ the rounds stack into a filmstrip, and the trajectory is visible in the
+// pictures rather than only in the chart.
+function stripHTML(rounds){
+  const shots = rounds.map(r => {
+    const a = r.hero || (r.artifacts||[]).find(x => x.type==='image' || x.type==='video');
+    return (a && a.path) ? Object.assign({}, a, {round:r.round}) : null;
+  }).filter(Boolean);
+  if(shots.length < 2) return '';
+  return `<div class="strip">${shots.map(a => {
+    const media = a.type==='video' ? `<video src="${esc(a.path)}" autoplay loop muted playsinline></video>`
+                                   : `<img src="${esc(a.path)}" loading="lazy">`;
+    return `<figure>${media}<figcaption>r${a.round}${a.commit?' · '+esc(String(a.commit).slice(0,7)):''}</figcaption></figure>`;
+  }).join('')}</div>`;
+}
+
+function artHTML(a){
+  const cap=`<div class="cap">${esc(a.label||a.type)}${(a.type==='image'||a.type==='video')?' · '+sha(a.commit):''}</div>`;
+  if(a.type==='image') return `<div class="art"><img src="${esc(a.path)}" loading="lazy">${cap}</div>`;
+  if(a.type==='video') return `<div class="art"><video src="${esc(a.path)}" controls muted></video>${cap}</div>`;
+  if(a.type==='log'||a.type==='diff') return `<div class="art"><pre>${esc(a.preview||a.path)}</pre>${cap}</div>`;
+  return `<div class="art"><div class="cap"><a href="${esc(a.path)}" style="color:#58a6ff">${esc(a.label||a.path)}</a></div></div>`;
+}
+
+function render(d){
+  $('#target').textContent = d.target || 'Autonomous loop';
+  $('#bar').textContent = d.bar ? ('Bar: '+d.bar) : '';
+  badge(d.status); $('#backstop').innerHTML = backstopHTML(d.hitBackstop);
+  $('#clock').textContent = d.started_at ? ('elapsed '+elapsed(d.started_at)) : '';
+  const rounds = d.rounds||[];
+  $('#herobody').innerHTML = heroHTML(d) + stripHTML(rounds);
+  chart(rounds, d.pass_threshold ?? 0.9);
+
+  $('#runstats').innerHTML =
+    row('Status', d.status) + row('Rounds', rounds.length) +
+    row('Best composite', Math.max(-1,...rounds.map(r=>r.composite??0)).toFixed(3)) +
+    row('Latest pass', rounds.length? `${rounds.at(-1).pass_count??'?'}/${rounds.at(-1).total??'?'}`:'–') +
+    row('Threshold', d.pass_threshold ?? '–') +
+    (d.hitBackstop===true ? `<div class="stat"><span class="muted">Backstop</span>${backstopHTML(true)}</div>` : '');
+
+  if(d.budget){ const b=d.budget, pct=b.total? Math.min(100,100*b.spent/b.total):0;
+    $('#budget').innerHTML = row('Spent', fmt(b.spent)) + row('Total', fmt(b.total)) +
+      `<div class="bar" style="margin-top:8px"><i style="width:${pct}%"></i></div>
+       <div class="sub" style="margin-top:4px">${pct.toFixed(0)}% of budget</div>`;
+  } else $('#budget').innerHTML='<div class="muted">no budget cap</div>';
+
+  const spend = d.model_spend || {};
+  $('#spend').innerHTML = Object.keys(spend).length
+    ? Object.entries(spend).map(([k,v])=>row(k, fmt(v))).join('') : '<div class="muted">–</div>';
+
+  $('#rounds').innerHTML = rounds.length ? rounds.slice().reverse().map(r=>{
+    const pct = Math.round((r.composite??0)*100);
+    const arts = (r.artifacts||[]).map(artHTML).join('');
+    const finds = (r.findings||[]).map(findingHTML).join('') || '<div class="muted">no open findings</div>';
+    return `<details class="round" ${r.round===rounds.length?'open':''}>
+      <summary><span class="rnum">Round ${r.round}</span>
+        <span class="bar"><i style="width:${pct}%"></i></span>
+        <b>${(r.composite??0).toFixed(3)}</b>
+        <span class="sub">${r.pass_count??'?'}/${r.total??'?'} pass</span>
+        ${backstopHTML(r.hitBackstop)}</summary>
+      <div class="rbody">
+        ${r.notes?`<div class="sub" style="margin-bottom:8px">${esc(r.notes)}</div>`:''}
+        ${finds}
+        ${arts?`<div class="arts">${arts}</div>`:''}
+      </div></details>`;
+  }).join('') : '<div class="empty">No rounds yet.</div>';
+
+  $('#refresh').textContent = d.status==='running' ? 'live · refreshing' : 'run complete';
+  if(d.status==='running'){ if(!timer) timer=setInterval(load,3000); } else { clearInterval(timer); timer=null; }
+}
+function row(k,v){ return `<div class="stat"><span class="muted">${k}</span><b>${fmt(v)}</b></div>`; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function load(){
+  try{ const r=await fetch('./progress.json?_='+Date.now()); if(!r.ok) throw 0; render(await r.json()); }
+  catch(e){ $('#bar').textContent='waiting for progress.json… (serve this dir with workbench_server.py)'; }
+}
+async function loadHistory(){
+  try{
+    const r=await fetch('./runs.jsonl?_='+Date.now()); if(!r.ok) throw 0;
+    const runs=(await r.text()).trim().split('\n').filter(Boolean).map(JSON.parse);
+    if(!runs.length) throw 0;
+    $('#histbody').innerHTML = runs.slice().reverse().map(run=>{
+      const traj=run.trajectory||[]; const W=200,H=34;
+      const pts=traj.map((v,i)=>`${i*(W/Math.max(1,traj.length-1))},${H-v*H}`).join(' ');
+      return `<div class="runrow">
+        <div style="min-width:150px"><b>${esc(run.target||run.run_id||'run')}</b> ${backstopHTML(run.hitBackstop)}
+          <div class="sub">${esc(run.started_at||'')} · ${run.rounds||0} rounds · ${esc(run.status||'')}</div></div>
+        <svg class="spark" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="#58a6ff" stroke-width="2"/></svg>
+        <b>${(run.best_composite??0).toFixed(3)}</b></div>`;
+    }).join('');
+  }catch(e){ $('#histbody').innerHTML='<div class="empty">No runs.jsonl found. Each finished run appends one line here for the longitudinal view.</div>'; }
+}
+load();
+</script>
+</body>
+</html>
