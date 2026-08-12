@@ -1,0 +1,14 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  h_2e249d121a4557 940-956
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "bb0a81a28fbeda5c796cfeead5fffb5eae2f0ea6",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
