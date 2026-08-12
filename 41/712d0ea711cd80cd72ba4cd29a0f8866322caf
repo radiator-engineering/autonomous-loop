@@ -1,0 +1,107 @@
+autonomous-loop-workspace/iteration-1/benchmark.json
+  s_5b3b04f2a221b5::t_717d730bb4354e 1-414
+autonomous-loop-workspace/iteration-1/benchmark.md
+  s_5b3b04f2a221b5::t_7b206667eaa883 1-21
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/with_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_3b7c19061b28de 1-12
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/with_skill/grading.json
+  s_5b3b04f2a221b5::t_27fd33407dd278 1-40
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/with_skill/timing.json
+  s_5b3b04f2a221b5::t_4a4d7292ccf28f 1-5
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/without_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_ec7ef85814ad76 1-12
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/without_skill/grading.json
+  s_5b3b04f2a221b5::t_cac3f7bf3a81f0 1-40
+autonomous-loop-workspace/iteration-1/eval-1-open-ended-routing/without_skill/timing.json
+  s_5b3b04f2a221b5::t_38c1a41d5d9582 1-5
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/with_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_e026bb4ab6ace1 1-12
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/with_skill/grading.json
+  s_5b3b04f2a221b5::t_ba15a77108b21c 1-40
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/with_skill/timing.json
+  s_5b3b04f2a221b5::t_926e514b699f1e 1-5
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/without_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_98f12589c14384 1-12
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/without_skill/grading.json
+  s_5b3b04f2a221b5::t_f3bacd23412cf8 1-40
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/without_skill/timing.json
+  s_5b3b04f2a221b5::t_d5ff533b517b88 1-5
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/with_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_76b6aab942bb1c 1-12
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/with_skill/grading.json
+  s_5b3b04f2a221b5::t_f5fff1fbf57c43 1-40
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/with_skill/timing.json
+  s_5b3b04f2a221b5::t_a0948556403c58 1-5
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/without_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_2b9b1198fd89a9 1-12
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/without_skill/grading.json
+  s_5b3b04f2a221b5::t_a7c16d65072a46 1-40
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/without_skill/timing.json
+  s_5b3b04f2a221b5::t_5b48353d112928 1-5
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/with_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_74f75c19f77488 1-11
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/with_skill/grading.json
+  s_5b3b04f2a221b5::t_b9f3f059837f63 1-35
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/with_skill/timing.json
+  s_5b3b04f2a221b5::t_1c11d37ad97b9c 1-5
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/without_skill/eval_metadata.json
+  s_5b3b04f2a221b5::t_f9bb2694afb4bd 1-11
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/without_skill/grading.json
+  s_5b3b04f2a221b5::t_1ff7b86868e84e 1-35
+autonomous-loop-workspace/iteration-1/eval-4-decidability-gate/without_skill/timing.json
+  s_5b3b04f2a221b5::t_45afdc6143995d 1-5
+autonomous-loop-workspace/iteration-2/benchmark.json
+  s_5b3b04f2a221b5::t_38df77701146e1 1-49
+autonomous-loop-workspace/iteration-2/benchmark.md
+  s_5b3b04f2a221b5::t_18aa2313bb8d85 1-38
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/eval_metadata.json
+  s_5b3b04f2a221b5::t_675b6563a5d636 1-11
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/with_skill/outputs/grading.json
+  s_5b3b04f2a221b5::t_4be1d369bb7584 1-26
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/with_skill/outputs/response.md
+  s_5b3b04f2a221b5::t_2e5d32bf647953 1-54
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/with_skill/outputs/timing.json
+  s_5b3b04f2a221b5::t_41ed8c1af4ecec 1-5
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/without_skill/outputs/grading.json
+  s_5b3b04f2a221b5::t_c0f77dfde812fe 1-26
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/without_skill/outputs/response.md
+  s_5b3b04f2a221b5::t_268f86f24caf14 1-83
+autonomous-loop-workspace/iteration-2/eval-5-decidability-lagging-proxy/without_skill/outputs/timing.json
+  s_5b3b04f2a221b5::t_ab4670055f090f 1-5
+autonomous-loop/assets/workbench.html
+  s_c0654c057da6fd::t_8a2fc245d23547 1-310
+install.sh
+  s_5815d7ac98221e::t_00462102351329 1-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "41712d0ea711cd80cd72ba4cd29a0f8866322caf",
+  "prompts": {},
+  "sessions": {
+    "s_5815d7ac98221e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "848c72d2-9551-4dc1-b419-a37025af3ea7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "JJ Martin <martinjaco@gmail.com>"
+    },
+    "s_5b3b04f2a221b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7099b926-d758-4169-9d31-112135e46a6d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "JJ Martin <martinjaco@gmail.com>"
+    },
+    "s_c0654c057da6fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d97328-5607-42f0-afef-366ff2aa4530",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
