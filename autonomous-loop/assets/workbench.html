@@ -41,7 +41,7 @@
     --line:#2a2f3a; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
     /* --gate: the REPORTING-gate hue (unwitnessed/undocumented). Derived from --accent
        (rotated toward violet) rather than an unrelated invented color, so it stays inside
-       the token system DESIGN-CONTRACT.md §3 requires while still reading as distinct from
+       the token system the design bar's surface palette (references/observability.md) requires while still reading as distinct from
        ok/warn/bad. */
     --gate:#a78bfa;
   }
@@ -67,7 +67,7 @@
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
   .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 12px;
     display:flex; align-items:center; gap:8px; }
-  .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+  .stat { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
   .stat:last-child{ border:0; }
   .stat b { font-variant-numeric:tabular-nums; }
   .delta { font-size:12px; font-variant-numeric:tabular-nums; }
@@ -191,7 +191,7 @@
           <div id="agents" class="agents"></div>
           <div id="agentsempty"></div>
         </div>
-        <div class="panel" style="margin-top:16px"><h2>Score trajectory</h2><svg id="chart"></svg></div>
+        <div class="panel" style="margin-top:16px"><h2>Progress across rounds</h2><svg id="chart"></svg></div>
         <div class="panel" style="margin-top:16px"><h2>Rounds</h2><div id="rounds"></div><div id="roundsempty"></div></div>
       </div>
       <aside>
@@ -212,7 +212,7 @@
       <div id="artgroups"></div>
       <div id="artsempty"></div>
     </div>
-    <!-- DESIGN-CONTRACT.md §1's blueprint names the Evidence tier as "the Artifacts tab, claims, the
+    <!-- the design bar's blueprint (references/observability.md) names the Evidence tier as "the Artifacts tab, claims, the
          handoff" — three things. Until this panel, only the first was rendered; HANDOFF.md and
          claims.jsonl are terminal-work files nothing fetched (references/observability.md's own
          triage table admitted it). Both live in LEDGER_DIR, same dir this page is served from, so
@@ -221,7 +221,7 @@
       <div id="handoffbody"></div>
     </div>
     <div class="panel" style="margin-top:16px"><h2>Claims <span class="sub" id="claimscount"></span></h2>
-      <div class="sub" style="margin-bottom:12px">Read from <code>claims.jsonl</code> — one line per atom confirmed this run, with the evidence that confirmed it.</div>
+      <div class="sub" style="margin-bottom:12px">Read from <code>claims.jsonl</code> — one line for each result this run confirmed, with the evidence that confirmed it.</div>
       <div id="claimsbody"></div>
     </div>
   </section>
@@ -236,7 +236,7 @@ let timer = null, pushed = false, lastLedger = '', lastActivity = '';
 // runstats deltas: "Blocked" has no per-round field in the ledger's rounds[] (see roundEntry() in
 // loop-template.js) — only "Confirmed", "Best composite" and "Latest pass" carry the history needed
 // to diff round-over-round from a single payload. Rather than substitute a different quantity for
-// Blocked (forbidden by DESIGN-CONTRACT.md §1 rule 5), track its value across the round boundary
+// Blocked (forbidden by design bar (references/observability.md) rule 5), track its value across the round boundary
 // client-side: the board only moves once per round (see #agentsempty note above), so a change in
 // rounds.length is a real round advancing, and we snapshot d.blocked exactly then.
 let lastRoundSeen = -1, lastRoundBlocked = null, prevRoundBlocked = null;
@@ -355,8 +355,8 @@ function chart(rounds, threshold, mode){
   rounds.forEach((r,i)=>{ if(showComposite) g+=`<circle cx="${xs[i]}" cy="${y(r.composite)}" r="3.5" fill="#58a6ff"/>`;
     if(r.confirmed!=null) g+=`<circle cx="${xs[i]}" cy="${y(r.confirmed/maxAtoms)}" r="3.5" fill="#3fb950"/>`;
     g+=`<text x="${xs[i]}" y="${H-8}" fill="#9aa4b2" text-anchor="middle" font-size="10">${r.round}</text>`; });
-  if(showComposite) g+=`<text x="${pad}" y="14" fill="#58a6ff" font-size="11">— composite</text>`;
-  g+=`<text x="${showComposite?pad+90:pad}" y="14" fill="#3fb950" font-size="11">— confirmed atoms (of ${maxAtoms})</text>`;
+  if(showComposite) g+=`<text x="${pad}" y="14" fill="#58a6ff" font-size="11">— score</text>`;
+  g+=`<text x="${showComposite?pad+70:pad}" y="14" fill="#3fb950" font-size="11">— ${unit(mode,2)} confirmed (of ${maxAtoms})</text>`;
   setHTMLIfChanged(svg, g);
 }
 
@@ -447,15 +447,31 @@ function roundRow(r){
 // writes a flat 0. Rendering that anyway drew five rounds of "0.000" beside five empty progress
 // bars on a run that had confirmed eighteen atoms: a scoreboard reporting no progress on a board
 // whose whole job is showing progress. It was not a wrong number, which is what made it bad — it
-// was a real field, correctly read, that means nothing here. DESIGN-CONTRACT.md §1 rule 5: compute
+// was a real field, correctly read, that means nothing here. Design bar (references/observability.md) rule 5: compute
 // what the archetype is actually scored on, or defer; never substitute a different quantity.
 //
 // So: a converger keeps composite against its bar. Everyone else gets confirmed atoms, drawn
 // against the run's own high-water mark, because for those archetypes the atom count IS the score.
+// What the loop counts, named in the words of the thing being counted.
+//
+// The board used to print "18 atoms". "Atom" is this skill's internal word for the unit a loop
+// counts; it is the right word inside the driver and the wrong word on a screen. The person who
+// walks up to a running loop is a build or ops engineer, not a reader of `references/atom-design.md`,
+// and a headline number whose noun has to be looked up is a headline number that gets ignored.
+//
+// Each name below is the archetype's own atom from references/archetypes.md, said plainly: a
+// converger counts rubric criteria, an exhauster queue items, a saturator findings, an explorer
+// claims, a sentinel invariants ("rules"). The fallback is deliberately vague rather than wrong —
+// an unknown mode gets "results", never a noun borrowed from some other archetype.
+function unit(mode, n){
+  const u = ({ converger:['check','checks'], exhauster:['item','items'], saturator:['finding','findings'],
+               explorer:['claim','claims'], sentinel:['rule','rules'] })[mode] || ['result','results'];
+  return n === 1 ? u[0] : u[1];
+}
 function roundMetric(r){
   if(r._mode === 'converger') return { text: (r.composite??0).toFixed(3), pct: Math.round((r.composite??0)*100) };
   const n = r.confirmed ?? 0;
-  return { text: n + (n === 1 ? ' atom' : ' atoms'), pct: Math.round(100 * n / Math.max(1, r._maxAtoms || 1)) };
+  return { text: n + ' ' + unit(r._mode, n), pct: Math.round(100 * n / Math.max(1, r._maxAtoms || 1)) };
 }
 function updateRound(node, r){
   const m = roundMetric(r);
@@ -467,13 +483,13 @@ function updateRound(node, r){
   setHTMLIfChanged(node.querySelector('.bs'), backstopHTML(r.hitBackstop));
   // `dry` and `hasBlocker` (progress.json → rounds[], references/observability.md) are the two
   // numbers a stop predicate is actually written in terms of — "am I converging or plateauing?"
-  // (Trends tier) and "where should I look?" (Breakdowns tier), DESIGN-CONTRACT.md §1. `dry` is
+  // (Trends tier) and "where should I look?" (Breakdowns tier), the design bar (references/observability.md). `dry` is
   // already the running streak-to-date (archetypes.md: "the dry-round counter so the user sees
   // convergence approaching"), so this round's value IS the counter — no aggregation needed. A flat
   // composite chart cannot tell a reader whether a run is plateaued or merely between rounds; this can.
   const dry = r.dry ?? 0;
   setHTMLIfChanged(node.querySelector('.dry'), dry > 0
-    ? `<span class="drybadge" title="rounds in a row with no newly confirmed atoms — the terminal predicate stops the run at DRY_ROUNDS">dry ${dry}</span>` : '');
+    ? `<span class="drybadge" title="${dry} round${dry===1?'':'s'} in a row found no new ${unit(r._mode,2)}. The run stops by itself after DRY_ROUNDS of these — set in the driver's Config.">dry ${dry}</span>` : '');
   setHTMLIfChanged(node.querySelector('.blk'), r.hasBlocker
     ? `<span class="blockerbadge" title="an unresolved blocker was open this round${r.stall ? ' · stall '+r.stall : ''}">blocker${r.stall ? ' · stall '+r.stall : ''}</span>` : '');
   // Findings only. The round's evidence moved to the Artifacts tab, where a frame is big enough to
@@ -535,7 +551,7 @@ async function loadArtifacts(){
     setHTMLIfChanged($('#artsempty'), a.total ? '' :
       `<div class="needsfeed"><b>Nothing in artifacts/ yet.</b>
        Every round should leave evidence here — the frame or clip that goes in the hero slot, plus the
-       diffs, logs and benchmark output behind the counters. A run that verified atoms and captured
+       diffs, logs and benchmark output behind the counters. A run that confirmed results and captured
        nothing finishes <code>unwitnessed</code>, so an empty gallery this far in is a defect to chase,
        not a quiet state.</div>`);
   }catch(e){
@@ -620,7 +636,7 @@ function renderActivity(act){
 
   const src = $('#actsrc');
   src.classList.toggle('guessed', !!act.guessed);
-  setText(src, act.source === 'ledger' ? 'source: activity.jsonl in the ledger dir'
+  setText(src, act.source === 'ledger' ? 'source: activity.jsonl in the run directory'
     : act.source === 'transcripts'
       ? `source: harness transcripts${act.guessed ? ' — auto-detected, and a second session running now would be the wrong one. Pass --transcripts to be sure.' : ''}`
       : '');
@@ -652,7 +668,7 @@ function render(d){
   renderStrip(rounds);
   chart(rounds, d.pass_threshold ?? 0.9, d.mode);
 
-  // A number with no delta cannot distinguish progress from a standstill (DESIGN-CONTRACT.md §2), so
+  // A number with no delta cannot distinguish progress from a standstill (the design bar, references/observability.md), so
   // each headline stat below is diffed against the prior round wherever the ledger carries that
   // history (rounds[-2] vs rounds[-1]); see the "Blocked" comment at lastRoundSeen for the one field
   // that has to be tracked client-side instead.
@@ -671,16 +687,19 @@ function render(d){
 
   setHTMLIfChanged($('#runstats'),
     row('Status', d.status) + row('Rounds', rounds.length) +
-    row('Confirmed', d.confirmed ?? '–', confirmedDelta) + row('Blocked', d.blocked ?? '–', blockedDelta) +
+    // "Confirmed 41" is not a fact until the noun is there. See unit() for why the board says
+    // "findings"/"items"/"checks" and never "atoms".
+    row('Confirmed '+unit(d.mode,2), d.confirmed ?? '–', confirmedDelta) +
+    row('Blocked', d.blocked ?? '–', blockedDelta) +
     // loop-template.js's writeLedger only defines progress() (the source of rounds[].composite) for
     // the converger; every other archetype's ledger writes a literal 0 every round. Printing that 0
     // as "Best composite" reads as a real, unmoving score for a quantity the archetype never tracked
     // — the same "flat line reads as a real number" failure fixed below for Threshold. So it's shown
     // only for the one archetype it's true for, same guard as Threshold.
     (d.mode==='converger'
-      ? row('Best composite', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3)
-      : '<div class="stat"><span class="muted">Best composite</span><span class="sub">n/a for this archetype</span></div>') +
-    row('Latest pass', rounds.length? passText(rounds.at(-1).pass_count, rounds.at(-1).total):'–', passDelta) +
+      ? row('Best score', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3)
+      : `<div class="stat"><span class="muted">Best score</span><span class="sub" style="text-align:right">not scored — this run counts ${unit(d.mode,2)}</span></div>`) +
+    row('Passing latest round', rounds.length? passText(rounds.at(-1).pass_count, rounds.at(-1).total):'–', passDelta) +
     // Every archetype writes pass_threshold into progress.json, but it only gates the converger's
     // stop() (composite >= PASS_THRESHOLD) — exhauster/saturator/explorer/sentinel stop on
     // open.size===0, a dry streak, `answered`, or a blocker, never on this number. Printing it as a
@@ -726,10 +745,10 @@ function row(k,v,delta,decimals){
 // state.total (converger's rubric size, exhauster's queue length) — see loop-template.js:roundEntry.
 // saturator/explorer/sentinel never set it and roundEntry now reports it as null there rather than
 // falling back to pass_count's own value, which used to make every such round read a tautological
-// "N/N" (DESIGN-CONTRACT.md §1 rule 5: never substitute a different quantity, even disclosed). A
+// "N/N" (design bar (references/observability.md) rule 5: never substitute a different quantity, even disclosed). A
 // null total renders as a plain count with a note, never as a fraction that is guaranteed 100%.
 function passText(pc, total){
-  return total==null ? `${pc??'?'} confirmed · no total for this archetype` : `${pc??'?'}/${total}`;
+  return total==null ? `${pc??'?'} confirmed · this run has no fixed total to work through` : `${pc??'?'}/${total}`;
 }
 // null/undefined delta = no prior round to compare against (round 1, or a field the ledger doesn't
 // carry history for yet) — say nothing rather than print a fake "+0" for a comparison that never

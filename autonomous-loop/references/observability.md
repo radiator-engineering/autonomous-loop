@@ -291,6 +291,127 @@ DOM to assert an unchanged list performs **zero** DOM mutations. Like every harn
 its own red half — five deliberate defects plus a rebuild-everything reconciler — because a comment
 asking the next editor not to re-render is what failed the first time.
 
+## The board's design bar
+
+Read this before you change `assets/workbench.html`. It is the bar the board is judged against, and
+it is written down so a reviewer has to name a rule instead of stating a preference. Three outside
+skills set it — `building-dashboards` (axiomhq), `build-dashboard` (anthropics) and `enterprise`
+(bergside/awesome-design-skills). Their rules are copied here rather than cited, because two of the
+three live in repositories this skill does not control and one of them has already been deleted
+once.
+
+**Who the board is for.** Somebody who walks up to a run that has been going for two hours and needs
+to know within seconds whether to leave it alone, kill it, or go read something. Build and ops
+engineers, on call. Not an executive summary, and not a reader of these reference files. That
+audience decides every trade-off below: fast refresh, blockers near the top, and no word on the
+screen that has to be looked up.
+
+### Purpose — what each panel owes
+
+1. Every panel answers a question that leads to an action. A panel that answers no question is
+   decoration, however well it renders.
+2. Broad at the top, narrower in the middle, raw at the bottom.
+3. Prefer rates and percentiles to averages. An average hides the bad case.
+4. One question per panel.
+5. **Compute what was asked for, or say you cannot. Never substitute a different quantity, even
+   with a disclaimer.**
+
+Rule 5 is the one this board keeps breaking, and it is the witness gate one level down: an absent
+picture must never read as "nothing to show". A panel that renders `–`, `0` or an empty list because
+its *source* is missing is making a false statement about the run. It has to say what is missing and
+what would fill it.
+
+| Tier | Question it answers | On this board |
+|---|---|---|
+| At a glance | Is it working right now? | hero capture, status, confirmed/blocked, live agent count |
+| Trends | Is it still moving, or has it plateaued? | the chart across rounds, the dry-round streak |
+| Breakdowns | Where should I look? | the rounds list, open blockers, the per-phase agent split |
+| Evidence | What exactly happened? | the Artifacts tab, claims, the handoff |
+
+### Words on the board
+
+The board must not print this skill's own vocabulary. `atom`, `archetype`, `composite`, `frontier`
+and `ledger dir` are the right words in the driver and in these reference files, and the wrong words
+on a screen: a headline number whose noun the reader has to look up is a headline number the reader
+skips. That is rule 1 failing quietly — the panel renders, and it still leads to no action.
+
+So the board names the unit the way the run's own subject would name it. `unit(mode, n)` in
+`workbench.html` maps each archetype's atom to a plain noun, straight from the `Atom:` line in
+`archetypes.md`:
+
+| Loop shape | What it counts | The board says |
+|---|---|---|
+| converger | a rubric criterion | check / checks |
+| exhauster | a queue item | item / items |
+| saturator | a finding | finding / findings |
+| explorer | a claim | claim / claims |
+| sentinel | an invariant | rule / rules |
+| unknown mode | — | result / results |
+
+An unknown mode gets a deliberately vague noun rather than a borrowed one. "18 results" is thin;
+"18 findings" on a run that counts queue items is false.
+
+`composite` became **score**, and it is shown only for the converger, which is the only archetype
+that computes one. The `VOCABULARY` check in `selfcheck_board.mjs` scans the page markup and every
+string the render path emits — not comments, not identifiers, not `${…}` interpolations — and fails
+if any banned word reaches the screen. Phase names (`Frontier`, `Verify`) are exempt: the board
+echoes whatever `phase()` title the driver emitted, so renaming them is a template change.
+
+### Construction
+
+- Two to four headline numbers at the top, each with its change against the prior round. A number
+  with no delta cannot tell progress from a standstill, and that is the one thing a loop watcher
+  needs.
+- Update only what changed. Never rebuild the DOM for a poll or a filter — the rule in "How the
+  board updates" above, and `setText` / `setHTMLIfChanged` / `keyed` are how it is kept.
+- Responsive grid, and print styles.
+- Cap table rows rather than letting a list grow without bound.
+
+**Two deliberate deviations. Do not tidy them into conformance:**
+
+- *No Chart.js and no CDN of any kind.* The board is one HTML file served over localhost with no
+  network guarantee, copied into a run directory that is deleted afterwards. A CDN `<script>` makes
+  it fail exactly when somebody is offline debugging a run. Charts stay as hand-written inline SVG.
+- *No webfont.* Same reason. The system font stack stays.
+
+### Surface tokens
+
+Dark cloud-platform look, modular grid, panels, strong hierarchy in the data.
+
+| Token | Value |
+|---|---|
+| primary | `#0C5CAB` |
+| secondary | `#0a4a8a` |
+| success | `#10b981` |
+| warning | `#f59e0b` |
+| danger | `#ef4444` |
+| surface | `#09090b` |
+| text | `#fafafa` |
+| radius | `4px` small, `8px` medium |
+| spacing | 8pt baseline grid |
+| type scale | 12 / 14 / 16 / 20 / 24 / 32 |
+
+Conformance means every padding, margin and gap is a multiple of 8 — 4 is allowed inside a control —
+every font size is on the scale, and every status colour comes from success/warning/danger instead of
+being invented per badge. `selfcheck_board.mjs` checks the spacing and the type scale directly, so
+this is a gate rather than a review note. Where the board already reads as GitHub dark and a token
+would be a jarring repaint, prefer the token but keep the contrast: the goal is one system, not a
+reskin.
+
+### What a change to the board must not break
+
+Each of these fails a check, not a review:
+
+- `selfcheck_loops.mjs` reads the board: every terminal status the driver can emit has a badge, the
+  two gate statuses look different from an ordinary stop, and every badge class has a CSS rule. It
+  matches the literal `const map={` and the `.b-xxx{` spellings as text — no space before the brace.
+- `selfcheck_board.mjs` reads it too: no `innerHTML` outside the allowed writers, `<details>` open
+  state decided once at creation, every id selector resolving, the rounds empty state a sibling of
+  the reconciled list, the inline script parsing, the server routing all three endpoints, the
+  gallery reading the directory, and capture mode connecting to nothing.
+- A capture must stay possible. `?static=1` connects to no stream and starts no repeating timer, or
+  the board can no longer be photographed and the run loses its evidence.
+
 ## What a round must capture
 
 `archetypes.md` says what goes in the slot; this says how to shoot it. Six rules, and what actually

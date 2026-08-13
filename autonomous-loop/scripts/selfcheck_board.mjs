@@ -179,11 +179,11 @@ const CHECKS = {
     // a watcher could see the loop was alive but not how many atoms it had actually confirmed, or how
     // many were blocked, without opening progress.json by hand.
     const rnd = extract(board, 'render') || ''
-    const ok = /row\(\s*'Confirmed'\s*,\s*d\.confirmed/.test(rnd) && /row\(\s*'Blocked'\s*,\s*d\.blocked/.test(rnd)
+    const ok = /row\('Confirmed '\+unit\(d\.mode,2\)\s*,\s*d\.confirmed/.test(rnd) && /row\(\s*'Blocked'\s*,\s*d\.blocked/.test(rnd)
     return [ok, ok ? 'runstats renders confirmed/blocked from the ledger head' : 'runstats does not render top-level confirmed/blocked']
   },
   RUNSTATSDELTA(board) {
-    // DESIGN-CONTRACT.md §2: each KPI card needs its change against the prior round, not just its
+    // the design bar (references/observability.md): each KPI card needs its change against the prior round, not just its
     // current value — "Confirmed 4" alone cannot tell a watcher progress from a standstill. Checked
     // by running the real row()/deltaHTML() against representative deltas (not a text scan), so a
     // mutant that keeps a "delta" identifier nearby but drops the sign/color is still caught.
@@ -193,21 +193,21 @@ const CHECKS = {
     try {
       const fn = new Function(`${fmtSrc}\n${deltaSrc}\n${rowSrc}\nreturn row;`)()
       up = fn('Confirmed', 4, 2); down = fn('Blocked', 0, -1)
-      flat = fn('Best composite', '0.500', 0, 3); none = fn('Latest pass', '2/4', null)
+      flat = fn('Best score', '0.500', 0, 3); none = fn('Passing latest round', '2/4', null)
     } catch (e) { return [false, `row()/deltaHTML() did not run: ${e.message}`] }
     const rendered = /\(\+2\)/.test(up) && /delta ok/.test(up) &&
       /\(–1\)/.test(down) && /delta bad/.test(down) && /\(±0\)/.test(flat) && !/delta/.test(none)
     // Also require render() to actually feed a prior-round comparison into these four stats, not
     // just that row() knows how to draw one if handed it.
     const rnd = extract(board, 'render') || ''
-    const wired = /row\('Confirmed',[^\n]*confirmedDelta/.test(rnd) && /row\('Blocked',[^\n]*blockedDelta/.test(rnd) &&
-      /row\('Best composite',[^\n]*bestDelta/.test(rnd) && /row\('Latest pass',[^\n]*passDelta/.test(rnd)
+    const wired = /row\('Confirmed '\+unit\(d\.mode,2\),[^\n]*confirmedDelta/.test(rnd) && /row\('Blocked',[^\n]*blockedDelta/.test(rnd) &&
+      /row\('Best score',[^\n]*bestDelta/.test(rnd) && /row\('Passing latest round',[^\n]*passDelta/.test(rnd)
     const ok = rendered && wired
     return [ok, ok ? 'runstats renders a signed, colored delta against the prior round for confirmed/blocked/best-composite/latest-pass'
       : `runstats delta broken: row/deltaHTML output=${rendered}, wired into render()=${wired}`]
   },
   DIAGNOSTICS(board) {
-    // DESIGN-CONTRACT.md §1 Trends tier requires "dry-round streak" and Breakdowns requires "open
+    // the design bar's Trends tier (references/observability.md) requires "dry-round streak" and Breakdowns requires "open
     // blockers" as answers a reader can get from the board. rounds[].dry and rounds[].hasBlocker
     // (references/observability.md) carry exactly those and were never read anywhere in the file — a
     // flat composite chart could not tell a plateaued run from one stuck on a blocker from one merely
@@ -215,7 +215,7 @@ const CHECKS = {
     // so a mutant that keeps the word "dry" nearby but drops the write is still caught.
     const upd = extract(board, 'updateRound')
     if (!upd) return [false, 'updateRound not found']
-    const helpers = ['setText', 'setHTMLIfChanged', 'setClass', 'esc', 'backstopHTML', 'findingHTML', 'passText', 'roundMetric']
+    const helpers = ['setText', 'setHTMLIfChanged', 'setClass', 'esc', 'backstopHTML', 'findingHTML', 'passText', 'roundMetric', 'unit']
       .map(n => extract(board, n)).filter(Boolean).join('\n')
     const q = (sel) => ({ dataset: {}, className: '', title: '', innerHTML: '', style: {},
       _sel: sel, textContent: '' })
@@ -236,14 +236,15 @@ const CHECKS = {
                     : `per-round dry/hasBlocker did not render: .dry="${dryHTML}" .blk="${blkHTML}"`]
   },
   ATOMTREND(board) {
-    // DESIGN-CONTRACT.md §1 Trends tier requires "score/atom trajectory across rounds" — two
+    // the design bar's Trends tier (references/observability.md) requires "score/atom trajectory across rounds" — two
     // quantities, not one. chart() used to draw only r.composite; a watcher asking "am I converging
     // in atoms, not just in a blended score" had to open every round's accordion and do the
     // arithmetic by hand. Run the real chart() against a fake svg node, not a text scan, so a
     // mutant that keeps a comment mentioning atoms but drops the second path is still caught.
     const chartSrc = extract(board, 'chart')
     const setH = extract(board, 'setHTMLIfChanged')
-    if (!chartSrc || !setH) return [false, 'chart() or setHTMLIfChanged() not found']
+    const unitSrc = extract(board, 'unit')
+    if (!chartSrc || !setH || !unitSrc) return [false, 'chart(), setHTMLIfChanged() or unit() not found']
     // Run it ONCE PER ARCHETYPE, because "draws two lines" is the right answer for exactly one of
     // them. The first version of this check called chart() with no mode at all and asserted two
     // lines unconditionally — so it would have gone red on the correct saturator behaviour and
@@ -251,7 +252,7 @@ const CHECKS = {
     // one archetype quietly enforces that archetype everywhere.
     const draw = (mode) => {
       const svg = { dataset: {}, innerHTML: '', setAttribute() {} }
-      const fn = new Function('$', `${setH}\n${chartSrc}\nreturn chart;`)(sel => sel === '#chart' ? svg : null)
+      const fn = new Function('$', `${setH}\n${unitSrc}\n${chartSrc}\nreturn chart;`)(sel => sel === '#chart' ? svg : null)
       fn([{ round: 1, composite: 0.2, confirmed: 2, open: 8 },
           { round: 2, composite: 0.5, confirmed: 6, open: 4 },
           { round: 3, composite: 0.9, confirmed: 10, open: 0 }], 0.9, mode)
@@ -270,6 +271,39 @@ const CHECKS = {
     ].filter(Boolean)
     return [bad.length === 0, bad.length ? bad.join('; ')
       : 'a converger charts composite and atoms; every other archetype charts atoms alone']
+  },
+  VOCABULARY(board) {
+    // The board must not print this skill's internal vocabulary. Its reader is whoever walks up to a
+    // running loop — a build or ops engineer, not somebody who has read references/atom-design.md —
+    // and "18 atoms", "composite 0.62" or "n/a for this archetype" each make the reader look a word
+    // up before they can act on the number. design bar (references/observability.md) rule 1: a panel that does not lead
+    // to an action is chart junk, and a number whose noun is unknown leads to no action.
+    //
+    // Comments and identifiers are exempt on purpose. `atom`, `archetype` and `composite` are the
+    // right words in the code and in the reference docs; this is about what reaches the screen. So
+    // the scan runs over rendered text only: markup outside <script>, and the contents of template
+    // literals and quoted strings that the render path emits.
+    const script = board.slice(board.indexOf('<script>'))
+    const markup = board.slice(0, board.indexOf('<script>'))
+      .replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+    // Strings and template literals inside the script, minus whole-line comments — and minus every
+    // ${...} interpolation, which is code, not text. `${y(r.composite)}` inside an SVG template is a
+    // field read; banning it would force the board to rename its own data.
+    const emitted = script.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+    const literals = [...emitted.matchAll(/`([^`]*)`|'([^'\n]*)'|"([^"\n]*)"/g)]
+      .map(m => (m[1] ?? m[2] ?? m[3]).replace(/\$\{[^}]*\}/g, ' ')).join('\n')
+    // `Frontier`, `Verify` and the other phase names are NOT banned: the board echoes whatever
+    // phase() title the driver emitted, so renaming them is a loop-template change, not a board one.
+    const banned = ['atom', 'archetype', 'composite', 'ledger dir']
+    const hits = []
+    for (const w of banned) {
+      const re = new RegExp(`\\b${w}s?\\b`, 'i')
+      if (re.test(markup)) hits.push(`${w} (in page markup)`)
+      if (re.test(literals)) hits.push(`${w} (in rendered text)`)
+    }
+    return [hits.length === 0, hits.length
+      ? `the board says ${hits.join(', ')} — say what the reader is looking at, not what the driver calls it`
+      : `no internal vocabulary (${banned.join(', ')}) reaches the screen`]
   },
   SELECTORS(board) {
     const ids = new Set([...board.matchAll(/\bid="([\w-]+)"/g)].map(m => m[1]))
@@ -325,17 +359,17 @@ const CHECKS = {
     return [bad.length === 0, bad.length ? bad.join('; ') : 'gallery reads the dir, is pushed on change, and has its own view']
   },
   STATFALLBACK(board) {
-    // "Best composite" must fall back to '–' like its sibling stats (Latest pass, Threshold) when a
+    // "Best score" must fall back to '–' like its sibling stats (Latest pass, Threshold) when a
     // run has zero rounds. `Math.max(-1, ...[].map(...))` is a sentinel invented to dodge
     // `Math.max()` on an empty array, but it leaks straight into the frame as '-1.000' — a
     // precision-formatted number that reads as a real composite score. Design Contract §1 Rule 5:
     // compute what's asked, or defer with '–'; never substitute a fabricated quantity.
     const sentinel = /Math\.max\(-1,/.test(board)
-    const guarded = /row\('Best composite',\s*rounds\.length\s*\?/.test(board)
+    const guarded = /row\('Best score',\s*rounds\.length\s*\?/.test(board)
     return [!sentinel && guarded,
-      sentinel ? "Best composite still computes Math.max(-1,...), which prints '-1.000' on a 0-round run"
-                : guarded ? "Best composite falls back to '–' when rounds.length===0"
-                          : "Best composite has no empty-round guard"]
+      sentinel ? "Best score still computes Math.max(-1,...), which prints '-1.000' on a 0-round run"
+                : guarded ? "Best score falls back to '–' when rounds.length===0"
+                          : "Best score has no empty-round guard"]
   },
   HISTFALLBACK(board) {
     // The History tab's per-run best-composite number must use the same '–' fallback as its sibling
@@ -428,7 +462,7 @@ print(json.dumps({"names": names, "distinct": len(set(names)) == len(names),
     // workbench_server.py caps the agent list at ACTIVITY_MAX and reports how many it dropped as
     // act.truncated (collect_activity). renderActivity never read it, so a round with more than
     // ACTIVITY_MAX recorded agents showed the newest cap-worth with no sign anything was cut — a
-    // capped list reading as a complete one, the same false-negative DESIGN-CONTRACT.md §1 Rule 5
+    // capped list reading as a complete one, the same false-negative design bar (references/observability.md) rule 5
     // forbids for a missing panel, just for a dropped tail of a list instead. Run the real function
     // against a fake DOM, not a text scan, so a mutant that reads act.truncated but drops the write
     // is still caught.
@@ -494,7 +528,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
                     : `a done agent from activity.jsonl has no usable idle_s: ${JSON.stringify(out)}`]
   },
   EVIDENCE(board) {
-    // DESIGN-CONTRACT.md §1's blueprint names the Evidence tier as "the Artifacts tab, claims, the
+    // the design bar's blueprint (references/observability.md) names the Evidence tier as "the Artifacts tab, claims, the
     // handoff" — three things. Until this locator, only the Artifacts tab rendered anything;
     // HANDOFF.md and claims.jsonl were fetched by nothing (references/observability.md's own triage
     // table admitted it). Checked two ways: the markup wires the two new panels into loadArtifacts,
@@ -517,7 +551,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
                  : `claimsHTML mis-parsed a 2-line claims.jsonl fixture: ${html}`]
   },
   SPACING(board) {
-    // DESIGN-CONTRACT.md §3 names four ad-hoc container paddings by exact value — 16px 22px header
+    // the design bar's surface tokens (references/observability.md) names four ad-hoc container paddings by exact value — 16px 22px header
     // padding (and its 22px gap), 12px 22px 0 on .tabs, 7px 14px on .tab, and 18px 22px on main — as
     // "a real, checkable gap, not a matter of taste" against the 8pt baseline grid. These are
     // container paddings, not control interiors, so the 4px exception does not cover them: every
@@ -534,7 +568,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
       bad.length ? `off-grid container padding remains: ${bad.join('; ')}` : 'header/tabs/tab/main padding are all on the 8pt grid']
   },
   BADGESPACING(board) {
-    // DESIGN-CONTRACT.md §3: badge/pill paddings were off-grid and satisfied neither the 8px-multiple
+    // the design bar's surface tokens (references/observability.md): badge/pill paddings were off-grid and satisfied neither the 8px-multiple
     // rule nor the 4px control exception — `.badge{padding:3px 10px}`, `.backstop{padding:2px 8px}`,
     // `.drybadge,.blockerbadge{padding:2px 8px}`, `.phasetag{padding:3px 9px}`,
     // `.ftype{padding:1px 7px}`. SPACING() above is scoped to header/.tabs/.tab/main and explicitly
@@ -557,7 +591,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
       bad.length ? `off-grid badge/pill padding remains: ${bad.join('; ')}` : 'badge/backstop/drybadge/blockerbadge/phasetag/ftype padding are all 4px 8px']
   },
   TYPESCALE(board) {
-    // DESIGN-CONTRACT.md §3 names seven rules off the 12/14/16/20/24/32 scale: `.panel h2` (13px),
+    // the design bar's surface tokens (references/observability.md) names seven rules off the 12/14/16/20/24/32 scale: `.panel h2` (13px),
     // `.finding .m` (12.5px), `.strip figcaption`, `.backstop`, `.drybadge,.blockerbadge`,
     // `.ftype` (11px each), and `.needsfeed` (13px) — the class every "source is absent" honesty
     // panel on the board uses (rule 5's empty states: no workflow feed, no artifacts/, no
@@ -579,7 +613,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
       bad.length ? `off-scale font-size remains: ${bad.join('; ')}` : '.panel h2/.finding .m/.strip figcaption/.backstop/.drybadge/.blockerbadge/.ftype/.needsfeed are all on the 12/14/16/20/24/32 scale']
   },
   AGENTROWSPACING(board) {
-    // DESIGN-CONTRACT.md §3: `.agent` (the row template for every agent in the Workflow activity
+    // the design bar's surface tokens (references/observability.md): `.agent` (the row template for every agent in the Workflow activity
     // panel, re-rendered on every activity poll and the highest-traffic element on the board) used
     // `padding:7px 8px; border-radius:7px` — 7px matches neither the 8pt grid nor the 4px control
     // exception, and 7px border-radius matches neither of the two radius tokens (4px small / 8px
@@ -602,10 +636,11 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
     // so a mutant that keeps the mode param nearby but always draws the guide is still caught.
     const chartSrc = extract(board, 'chart')
     const setH = extract(board, 'setHTMLIfChanged')
-    if (!chartSrc || !setH) return [false, 'chart() or setHTMLIfChanged() not found']
+    const unitSrc = extract(board, 'unit')
+    if (!chartSrc || !setH || !unitSrc) return [false, 'chart(), setHTMLIfChanged() or unit() not found']
     const runChart = (mode) => {
       const svg = { dataset: {}, innerHTML: '', setAttribute() {} }
-      const fn = new Function('$', `${setH}\n${chartSrc}\nreturn chart;`)(sel => sel === '#chart' ? svg : null)
+      const fn = new Function('$', `${setH}\n${unitSrc}\n${chartSrc}\nreturn chart;`)(sel => sel === '#chart' ? svg : null)
       fn([{ round: 1, composite: 0, confirmed: 4, open: 6 }, { round: 2, composite: 0, confirmed: 10, open: 0 }], 0.9, mode)
       return svg.innerHTML
     }
@@ -624,20 +659,20 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
   BESTCOMPOSITEMODE(board) {
     // loop-template.js's writeLedger sets rounds[].composite to a literal 0 every round for every
     // non-converger archetype (mode.progress ? mode.progress(state) : 0 — only the converger defines
-    // progress()). Before this check existed, render()'s "Best composite" stat had no mode guard and
+    // progress()). Before this check existed, render()'s "Best score" stat had no mode guard and
     // printed "0.000 (±0)" round after round for exhauster/saturator/explorer/sentinel runs, as if it
     // were real, unmoving telemetry — the same failure already fixed for the neighboring Threshold
     // stat. Checked by exact rule text so a mutant that keeps the row('Best composite'...) call but
     // drops the mode guard around it is still caught.
     const rnd = extract(board, 'render') || ''
-    const statGated = /d\.mode\s*===\s*'converger'\s*\n\s*\?\s*row\('Best composite'/.test(rnd)
-    const naFallback = /n\/a for this archetype/.test(rnd)
+    const statGated = /d\.mode\s*===\s*'converger'\s*\n\s*\?\s*row\('Best score'/.test(rnd)
+    const naFallback = /not scored — this run counts/.test(rnd)
     const ok = statGated && naFallback
-    return [ok, ok ? 'the Best composite stat renders only for mode==="converger", with an n/a note otherwise'
-      : `Best composite stat gated=${statGated}, n/a fallback present=${naFallback}`]
+    return [ok, ok ? 'the Best score stat renders only for mode==="converger", with an n/a note otherwise'
+      : `Best score stat gated=${statGated}, n/a fallback present=${naFallback}`]
   },
   GATETOKEN(board) {
-    // DESIGN-CONTRACT.md §3: "every status color comes from success/warning/danger rather than
+    // the design bar's surface tokens (references/observability.md): "every status color comes from success/warning/danger rather than
     // being invented per badge... The board today...invents colors per badge." .b-ungated (the
     // REPORTING-gate badge for `unwitnessed`/`undocumented`) used to be the proof of that gap: a
     // bare `#d2a8ff` violet with no `--` variable behind it, defined nowhere in :root's token list.
@@ -699,7 +734,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
       : `filmstrip reconcile broken: heroBodyAlone=${notFolded} idle=${idle} sameNodes=${sameNodes}`]
   },
   ROWSPACING(board) {
-    // DESIGN-CONTRACT.md §3: SPACING() above is scoped to header/.tabs/.tab/main, BADGESPACING() to
+    // the design bar's surface tokens (references/observability.md): SPACING() above is scoped to header/.tabs/.tab/main, BADGESPACING() to
     // the pill badges, and AGENTROWSPACING() to .agent — none of them cover .round summary (the
     // collapsible round-row header), .finding (a per-round finding card), .hero .frames (the hero
     // capture's flex row), .strip (the filmstrip beneath it), or .gal figcaption (the artifact
@@ -733,7 +768,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
     // used to make pass_count and total IDENTICAL by construction every round: `${pass}/${total}`
     // read a tautological 100% for the run's whole life (visible in r6-board.png: "4/4", "7/7",
     // "10/10", "14/14", "18/18" pass, round after round). That is the exact substitution
-    // DESIGN-CONTRACT.md §1 rule 5 forbids: "compute what's asked, or defer... never substitute a
+    // design bar (references/observability.md) rule 5 forbids: "compute what's asked, or defer... never substitute a
     // different quantity, even disclosed." Closed by having the board render a null total as a plain
     // count with a note, never a re-invented fraction, while still drawing a real fraction for the
     // two archetypes (converger, exhauster) that do have one. Run the real updateRound()/passText()
@@ -742,7 +777,7 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
     const upd = extract(board, 'updateRound')
     const pt = extract(board, 'passText')
     if (!upd || !pt) return [false, 'updateRound() or passText() not found']
-    const helpers = ['setText', 'setHTMLIfChanged', 'setClass', 'esc', 'backstopHTML', 'findingHTML', 'roundMetric']
+    const helpers = ['setText', 'setHTMLIfChanged', 'setClass', 'esc', 'backstopHTML', 'findingHTML', 'roundMetric', 'unit']
       .map(n => extract(board, n)).filter(Boolean).join('\n')
     const q = (sel) => ({ dataset: {}, className: '', title: '', innerHTML: '', style: {},
       _sel: sel, textContent: '' })
@@ -759,10 +794,10 @@ print(json.dumps({"state": rec.get("state"), "idle_s": rec.get("idle_s")}))
       withoutTotal = run({ round: 2, composite: 0.5, pass_count: 3, total: null, dry: 0, hasBlocker: false })
     } catch (e) { return [false, `updateRound did not run against a fake node: ${e.message}`] }
     const fractionOk = /2\/4/.test(withTotal)
-    const naOk = !/\//.test(withoutTotal) && /3/.test(withoutTotal) && /no total for this archetype/.test(withoutTotal)
+    const naOk = !/\//.test(withoutTotal) && /3/.test(withoutTotal) && /no fixed total/.test(withoutTotal)
     const ok = fractionOk && naOk
     return [ok, ok ? `a real total renders a fraction ("${withTotal.trim()}") and a null total renders a plain count with a note ("${withoutTotal.trim()}")`
-                    : `pass ratio broken: with total="${withTotal}" (want a "2/4"-style fraction), without total="${withoutTotal}" (want no '/' and "no total for this archetype")`]
+                    : `pass ratio broken: with total="${withTotal}" (want a "2/4"-style fraction), without total="${withoutTotal}" (want no '/' and "no fixed total")`]
   },
 }
 
@@ -790,7 +825,12 @@ const RED = [
   ['OPENSTATE', b => b.replace('function updateRound(node, r){', 'function updateRound(node, r){\n  node.open = !!r._latest;')],
   ['SELECTORS', b => b.replace("setText($('#target')", "setText($('#targett')")],
   ['RUNSTATS', b => b.replace(
-    "row('Confirmed', d.confirmed ?? '–', confirmedDelta) + row('Blocked', d.blocked ?? '–', blockedDelta) +\n    ", '')],
+    "row('Confirmed '+unit(d.mode,2), d.confirmed ?? '–', confirmedDelta) +\n    row('Blocked', d.blocked ?? '–', blockedDelta) +\n    ", '')],
+  // The exact regression this locator was closing: the board goes back to printing the skill's own
+  // word for the thing it counts. "18 atoms" is correct inside the driver and unreadable on a screen.
+  ['VOCABULARY', b => b.replace(
+    "return { text: n + ' ' + unit(r._mode, n), pct:",
+    "return { text: n + (n === 1 ? ' atom' : ' atoms'), pct:")],
   // The exact regression this locator was closing: row() still accepts a delta arg but deltaHTML()
   // formats it uncolored and unsigned, so "Confirmed 4 (2)" is indistinguishable from a fabricated
   // number — a watcher can no longer tell growth from loss at a glance.
@@ -841,13 +881,13 @@ const RED = [
   // back to the SESSION slug, so every un-prefixed agent in the run prints the same word.
   ['AGENTNAME', b => b, s => s.replace('return f"agent-{tail}" if tail else (slug or agent_id)', 'return slug or agent_id')],
   // The exact regression this locator was closing: .tab reverts to the ad-hoc 7px 14px named in
-  // DESIGN-CONTRACT.md §3 while the other three stay fixed.
+  // the design bar's surface tokens (references/observability.md) while the other three stay fixed.
   ['SPACING', b => b.replace('.tab { padding:8px 16px;', '.tab { padding:7px 14px;')],
   // The exact regression this locator was closing: .badge reverts to the ad-hoc 3px 10px named in
   // the gap report while the other four pills stay fixed.
   ['BADGESPACING', b => b.replace('.badge { padding:4px 8px;', '.badge { padding:3px 10px;')],
   // The exact regression this locator was closing: .agent (the Workflow activity row template)
-  // reverts to the ad-hoc padding:7px 8px; border-radius:7px named in DESIGN-CONTRACT.md §3.
+  // reverts to the ad-hoc padding:7px 8px; border-radius:7px named in the design bar's surface tokens (references/observability.md).
   ['AGENTROWSPACING', b => b.replace(
     '.agent { display:flex; gap:10px; align-items:center; padding:8px 8px; border-radius:8px; }',
     '.agent { display:flex; gap:10px; align-items:center; padding:7px 8px; border-radius:7px; }')],
@@ -857,14 +897,14 @@ const RED = [
     "setText($('#acttrunc'), act.truncated ? `+${act.truncated} more not shown` : '');",
     "setText($('#acttrunc'), '');")],
   // The exact regression this locator was closing: .panel h2 reverts to the ad-hoc 13px named in
-  // DESIGN-CONTRACT.md §3, off the 12/14/16/20/24/32 scale.
+  // the design bar's surface tokens (references/observability.md), off the 12/14/16/20/24/32 scale.
   ['TYPESCALE', b => b.replace('.panel h2 { font-size:12px;', '.panel h2 { font-size:13px;')],
   // The exact regression this locator was closing: .needsfeed — the class carrying every
   // "source is absent" honesty panel on the board — reverts to the ad-hoc 13px named in
-  // DESIGN-CONTRACT.md §3, off the 12/14/16/20/24/32 scale.
+  // the design bar's surface tokens (references/observability.md), off the 12/14/16/20/24/32 scale.
   ['TYPESCALE', b => b.replace('.needsfeed { padding:16px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); font-size:12px;', '.needsfeed { padding:16px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); font-size:13px;')],
   // The exact regression this locator was closing: .b-ungated reverts to an invented bare hex
-  // (`#d2a8ff`) with the --gate token left defined but unused — the gap DESIGN-CONTRACT.md §3
+  // (`#d2a8ff`) with the --gate token left defined but unused — the gap the design bar's surface tokens (references/observability.md)
   // calls out by name comes back even though the token still exists in :root.
   // The exact regression this locator was closing: chart() draws the threshold guide for every
   // mode again, so a saturator's flat composite=0 line is shown pinned under "bar 0.9" as if that
@@ -872,11 +912,11 @@ const RED = [
   ['THRESHOLDMODE', b => b.replace(
     "if(mode==='converger'){\n    g+=`<line x1=\"${pad}\" y1=\"${y(threshold)}\"",
     "if(true){\n    g+=`<line x1=\"${pad}\" y1=\"${y(threshold)}\"")],
-  // The exact regression this locator was closing: the Best composite stat loses its mode guard and
+  // The exact regression this locator was closing: the Best score stat loses its mode guard and
   // prints a fabricated "0.000 (±0)" for every non-converger archetype again.
   ['BESTCOMPOSITEMODE', b => b.replace(
-    "(d.mode==='converger'\n      ? row('Best composite', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3)\n      : '<div class=\"stat\"><span class=\"muted\">Best composite</span><span class=\"sub\">n/a for this archetype</span></div>') +",
-    "row('Best composite', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3) +")],
+    "(d.mode==='converger'\n      ? row('Best score', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3)\n      : `<div class=\"stat\"><span class=\"muted\">Best score</span><span class=\"sub\" style=\"text-align:right\">not scored — this run counts ${unit(d.mode,2)}</span></div>`) +",
+    "row('Best score', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3) +")],
   ['GATETOKEN', b => b.replace(
     '.b-ungated{ color:var(--gate); border:1px solid color-mix(in srgb, var(--gate) 53%, transparent); background:\n    repeating-linear-gradient(135deg,color-mix(in srgb, var(--gate) 13%, transparent) 0 6px,color-mix(in srgb, var(--gate) 5%, transparent) 6px 12px); }',
     '.b-ungated{ color:#d2a8ff; border:1px solid #d2a8ff88; background:\n    repeating-linear-gradient(135deg,#d2a8ff22 0 6px,#d2a8ff0d 6px 12px); }')],
@@ -894,7 +934,7 @@ const RED = [
   // The exact regression this locator was closing: passText() falls back to a fraction with the
   // pass_count on both sides when total is null, reintroducing the tautological "N/N".
   ['PASSFRAC', b => b.replace(
-    "function passText(pc, total){\n  return total==null ? `${pc??'?'} confirmed · no total for this archetype` : `${pc??'?'}/${total}`;\n}",
+    "function passText(pc, total){\n  return total==null ? `${pc??'?'} confirmed · this run has no fixed total to work through` : `${pc??'?'}/${total}`;\n}",
     "function passText(pc, total){\n  return `${pc??'?'}/${total==null?pc:total}`;\n}")],
   // The mutant is the regression itself: score every archetype on the converger's composite. It reads
   // as a simplification in a diff, which is exactly how it got there the first time.
