@@ -3,3 +3,6 @@
 
 # macOS Finder metadata.
 .DS_Store
+
+# Rebuilt by install.sh --pack; not tracked.
+autonomous-loop-share.zip

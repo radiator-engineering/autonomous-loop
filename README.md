@@ -2,22 +2,114 @@
 
 Source repo for the `autonomous-loop` Claude Code skill.
 
-The skill designs and runs an autonomous loop for a task too big for one context: many
-fresh-context agents work the task while a thin deterministic driver decides what to work on next
-and when to stop. `share/README.md` describes what the skill does and the five loop shapes it
-routes between; this file covers the repo.
+The skill points Claude at a task that does not fit in one context. It spends many fresh-context
+agents against the task while a thin deterministic driver decides what to work on next and when to
+stop. The driver is code, not a judgment call: it counts verified work, and it refuses to report
+success it cannot show evidence for.
 
-## Layout
+Ask for it the way you would ask a person — "migrate all 40 handlers", "find every place that
+writes a raw SQL string", "research this end to end", "keep this healthy" — and the skill picks the
+loop shape, designs the unit of work, proves the stop rule, then runs it.
+
+## The five shapes
+
+| Shape | Picks the next work from | Stops when | Canonical ask |
+|---|---|---|---|
+| **Converger** | rubric failures on one artifact | the counted score reaches the bar | "make X as good as Y" |
+| **Exhauster** | a known, enumerable queue | the queue is empty and every item verified | "migrate all N files / clear this backlog" |
+| **Saturator** | finders sweeping an unknown-size set | K rounds in a row turn up nothing new | "find every place that does X" |
+| **Explorer** | hypotheses raised by earlier grounded results | the question is answered, or surprise dries up | "research this end to end" |
+| **Sentinel** | events from a live stream | the invariants held across a window | "watch this and keep it healthy" |
+
+Choosing the shape is the decision that matters most, and it is the one the skill measurably
+improves — see [Evidence](#evidence). The shapes also compose: real work is often explore, then
+converge, then sentinel, and an exhauster over a board of tickets can route each ticket to its own
+inner loop.
+
+## What every shape shares
+
+The five shapes differ only in how they pick the next work and how they stop. Everything that keeps
+a long unattended run honest lives in one shared kernel:
+
+- **The worker is never the verifier.** The agent that did the work does not get to grade it.
+- **Every "done" is grounded in a signal you can check** — a test, a diff, a command's exit code —
+  not an agent's summary of its own work.
+- **Progress is counted in code** from verified units of work, never read off a model's impression
+  of how the run is going.
+- **Verification is fail-closed.** A verifier that crashes, hangs, or returns nothing usable leaves
+  the work unverified. It never passes by default.
+- **A hard blocker stops the run.** It cannot be averaged away or waited out.
+- **Each agent starts with a fresh context**, so one confused round does not poison the next.
+- **A budget ceiling bounds the run**, with cheaper models on the mechanical stages.
+
+`autonomous-loop/references/kernel.md` maps each guarantee to the failure it exists to prevent.
+
+## Install
+
+From this repo, into every Claude home on the machine:
+
+```sh
+./install.sh
+```
+
+The install is fail-closed. If any gate exits non-zero, nothing is copied.
+
+To install somewhere else, or on another machine, unzip the packaged skill instead. It is a plain
+zip with a single top-level `autonomous-loop/` folder:
+
+```sh
+unzip -o autonomous-loop/dist/autonomous-loop.skill -d ~/.claude/skills/
+```
+
+Claude Code picks the skill up on the next session.
+
+**Requirements:** `node` runs the self-checks and the generated driver. `python3` serves the
+optional live dashboard and nothing else — you can install, trigger, and verify the skill without
+it.
+
+## Verify
+
+The stop logic is code, so it is tested as code. The check costs no tokens and is deterministic:
+
+```sh
+cd ~/.claude/skills/autonomous-loop
+node scripts/selfcheck_loops.mjs        # expect exit 0
+```
+
+It runs the real driver template against a mocked harness, once per shape, and asserts the kernel
+holds in each: a clean run reaches its finished state; a verifier that crashes or returns nothing
+can never produce a positive finish; an open blocker forces `status='blocked'`.
+
+## Evidence
+
+`share/BENCHMARK.md` reports with-skill against baseline across both eval iterations. Pooled, the
+skill scores 23/23 and the baseline 18/23, on single samples graded by a separate strict grader.
+
+The whole gap is routing. The sharpest case is the saturator eval, where the baseline treated an
+unknown-size search as an enumerable queue and scored 2/5 against the skill's 5/5 — exactly the
+exhauster-versus-saturator call the router names as most decisive.
+
+The decidability gate — refusing a loop aimed at something you cannot measure — did not
+discriminate at this model tier. Both configurations scored full marks on both decidability evals.
+The gate guards against regressions and helps weaker tiers, but it is not measured lift here, and
+the benchmark says so.
+
+## Repo layout
 
 | Path | What it is |
 |---|---|
 | `autonomous-loop/` | The skill itself — the only thing that gets installed |
+| `autonomous-loop/SKILL.md` | Routing, kernel, the loop, the launch gate, substrates |
+| `autonomous-loop/references/` | The long-form docs the skill reads while designing a loop |
+| `autonomous-loop/assets/loop-template.js` | The driver template — all five shapes as one `MODES` table |
+| `autonomous-loop/assets/workbench.html` | Live dashboard for a running loop |
+| `autonomous-loop/scripts/` | The self-check harnesses, the launch gate, the dashboard server |
 | `autonomous-loop/evals/`, `autonomous-loop/dist/` | Present in source, never installed (see `EXCLUDES` in `install.sh`) |
-| `share/` | Prose shipped inside `autonomous-loop-share.zip` |
-| `autonomous-loop-workspace/` | Recorded eval runs, with-skill vs baseline |
-| `install.sh` | Gate, install, and repack |
+| `share/` | Prose packed into `autonomous-loop-share.zip` |
+| `autonomous-loop-workspace/` | Recorded eval runs, with-skill against baseline |
+| `install.sh` | Gate, install, repack |
 
-## Commands
+## Working on the skill
 
 ```sh
 ./install.sh --check          # run the source gates, change nothing
@@ -26,29 +118,26 @@ routes between; this file covers the repo.
 ./install.sh                  # gate, back up, install to every Claude home, repack
 ```
 
-`--check` and `--check-bundles` answer different questions, and the first says so: a green source
-gate does not mean the bundles on disk are shippable. Both were red-then-green at least once on
-purpose.
+`--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
+green source gate does not mean the bundles on disk are shippable. Run `--pack` after editing
+anything under `share/`, which is packed into the share zip and byte-compared against it.
 
-## The gates
+Each run backs up the current installs to `.install-backup/` first. Restore by copying them back.
 
-The install is **fail-closed** — if any check exits non-zero, nothing is copied. A skill that ships
-an untested stop rule is worse than one that ships nothing.
+### The gates
 
 | Gate | Refuses |
 |---|---|
-| `scripts/selfcheck_loops.mjs` | A kernel whose stop logic can report success it did not earn — runs the real template against a mocked harness for every archetype |
-| `scripts/selfcheck_preflight.mjs` | A launch gate that would pass a driver which does not descend from the template |
-| `scripts/selfcheck_docs.mjs` | A citation in the prose that no longer resolves |
+| `scripts/selfcheck_loops.mjs` | A kernel whose stop logic can report success it did not earn — runs the real template against a mocked harness for every shape |
+| `scripts/selfcheck_preflight.mjs` | A launch gate that would pass a driver not descended from the template |
+| `scripts/selfcheck_docs.mjs` | A citation in the skill's prose that no longer resolves |
 | `install.sh` | A `scripts/selfcheck_*.mjs` that exists but that no `run_gate` line invokes |
 | `install.sh` | A bundle that does not reproduce source's own harness result and template bytes |
 
-Each harness carries its own red half: it feeds itself a case built to trip it and fails if that
+Every harness carries its own red half: it feeds itself a case built to trip it, and fails if that
 case comes back clean. A gate that cannot fail is not a gate.
 
-## Relationship to `gauntlet-loop`
-
-`gauntlet-loop` is one instance of this method — the converger, with the full treatment. The two
-skills cite each other in prose, and `selfcheck_docs.mjs` resolves those cross-skill citations
-through the installed skill roots rather than a sibling directory, so each repo checks out and
-gates on its own.
+Two rules follow from the table, and both were learned the hard way. If you add a
+`scripts/selfcheck_*.mjs`, add its `run_gate` line in the same change — a harness nothing runs is a
+document. And a bundle is graded against source, never against the harness embedded in itself,
+because a bundle graded by its own copy always agrees with itself.

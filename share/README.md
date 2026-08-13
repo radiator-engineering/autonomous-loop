@@ -1,25 +1,30 @@
 # autonomous-loop (Claude Code skill)
 
-A skill that designs and runs an **autonomous loop** for a task too big for one context: it spends
-many fresh-context agents against the task while a thin deterministic driver decides what to work on
-next and when to stop. It is the generic method behind the `gauntlet-loop` skill, and it covers every
-loop shape below and picks the right one for you.
+A skill that designs and runs an **autonomous loop** for a task that does not fit in one context. It
+spends many fresh-context agents against the task while a thin deterministic driver decides what to
+work on next and when to stop. The driver is code, not a judgment call: it counts verified work, and
+it refuses to report success it cannot show evidence for.
 
-| Shape | Frontier (next work) | Stop when | Canonical ask |
+The skill covers every loop shape below and picks the right one for you.
+
+| Shape | Picks the next work from | Stops when | Canonical ask |
 |---|---|---|---|
-| **Converger** | rubric failures on one artifact | counted score ≥ bar | "make X as good as Y" |
-| **Exhauster** | pop a known, enumerable queue | queue empty, every item verified | "migrate all N files / clear this backlog" |
-| **Saturator** | finders over an unknown-size set | K dry rounds in a row | "find every place that does X" |
-| **Explorer** | hypotheses from prior grounded results | question answered / surprise dries up | "research this end to end" |
-| **Sentinel** | events from a live stream | invariants held over a window | "watch this and keep it healthy" |
+| **Converger** | rubric failures on one artifact | the counted score reaches the bar | "make X as good as Y" |
+| **Exhauster** | a known, enumerable queue | the queue is empty and every item verified | "migrate all N files / clear this backlog" |
+| **Saturator** | finders sweeping an unknown-size set | K rounds in a row turn up nothing new | "find every place that does X" |
+| **Explorer** | hypotheses raised by earlier grounded results | the question is answered, or surprise dries up | "research this end to end" |
+| **Sentinel** | events from a live stream | the invariants held across a window | "watch this and keep it healthy" |
 
-The correctness lives in a shared **kernel** every shape uses: worker ≠ verifier, every "done"
-grounded in a checkable signal, progress **counted** from verified atoms in code (never a model's
-gestalt), **fail-closed** verification (a crashed verifier is an unverified mandate, not a pass),
-hard blocker gate, context isolation, and a budget ceiling with model tiering.
+The shapes differ only in how they pick the next work and how they stop. Everything that keeps a
+long unattended run honest lives in one shared **kernel**: the worker is never the verifier; every
+"done" is grounded in a signal you can check; progress is counted in code from verified units of
+work, never read off a model's impression of the run; verification is **fail-closed**, so a crashed
+verifier leaves the work unverified rather than passing it; a hard blocker stops the run and cannot
+be averaged away; each agent starts with a fresh context; and a budget ceiling bounds the run, with
+cheaper models on the mechanical stages.
 
-The shapes **compose**: a real engagement is often explore → converge → sentinel, and an exhauster
-over a board of tickets can route each ticket to its own inner loop. See
+The shapes also **compose**. Real work is often explore, then converge, then sentinel, and an
+exhauster over a board of tickets can route each ticket to its own inner loop. See
 `autonomous-loop/references/archetypes.md` (Composition) inside the package.
 
 ## What's in the package
@@ -29,8 +34,9 @@ over a board of tickets can route each ticket to its own inner loop. See
 ```
 autonomous-loop/
   SKILL.md                      # the skill: routing, kernel, the loop, self-check, substrates
-  assets/loop-template.js       # single-mode driver template (all five shapes as a MODES table)
+  assets/loop-template.js       # the driver template — all five shapes as one MODES table
   assets/workbench.html         # bundled live dashboard
+  references/targeting.md       # choosing what to point a loop at, and what not to
   references/router.md          # how to route a task to the right shape + the decidability gate
   references/kernel.md          # the guardrails, each mapped to a failure mode
   references/archetypes.md      # per-shape frontier/stop/atom/example + Composition
@@ -48,36 +54,37 @@ The `.skill` is a plain zip. Unzip it into any Claude profile's `skills/` direct
 unzip -o autonomous-loop.skill -d ~/.claude/skills/
 ```
 
-That produces `~/.claude/skills/autonomous-loop/`. Claude Code picks it up on the next session; the
+That produces `~/.claude/skills/autonomous-loop/`. Claude Code picks it up on the next session. The
 skill triggers on asks like "migrate all N files", "find every place that does X", "audit the
 codebase for Y", "research this end to end", or "keep this healthy".
 
 ## Verify the install (recommended)
 
-The driver's stop logic is code, so it is tested as code — a zero-token, deterministic check:
+The driver's stop logic is code, so it is tested as code. The check costs no tokens and is
+deterministic:
 
 ```bash
 cd ~/.claude/skills/autonomous-loop
 node scripts/selfcheck_loops.mjs        # expect exit 0
 ```
 
-It runs the template against a mocked harness for every shape, one printed line per scenario, and
-asserts the kernel invariants on each: a clean run reaches its positive terminal state; a verifier
-that crashes, dies or returns nothing usable can never produce a positive finish; an open blocker
-forces `status='blocked'` and can't be averaged or dried away.
+It runs the template against a mocked harness for every shape, prints one line per scenario, and
+asserts the kernel holds in each: a clean run reaches its finished state; a verifier that crashes,
+dies, or returns nothing usable can never produce a positive finish; an open blocker forces
+`status='blocked'` and cannot be averaged or dried away.
 
-The harness in this bundle is the one the driver was built against — `install.sh` unzips each bundle
+The harness in this bundle is the one the driver was built against. `install.sh` unzips each bundle
 it packs, runs the copy inside it, and refuses to ship one whose result or template differs from
 source. So the scenario list you get here is the scenario list the template was proved against.
 
 ## Requirements
 
-- **node** — to run the self-check and (via the Workflow substrate) the generated driver.
-- **python3** — only for the optional live dashboard (`scripts/workbench_server.py`); not needed to
-  install, trigger, or self-check the skill.
+- **node** — runs the self-check and, through the Workflow substrate, the generated driver.
+- **python3** — only for the optional live dashboard (`scripts/workbench_server.py`). You do not
+  need it to install, trigger, or self-check the skill.
 
 ## Evidence
 
-`BENCHMARK.md` in this bundle has the honest with-skill-vs-baseline results across the eval
-iterations, including where the skill measurably helps (routing) and where it doesn't (the
-decidability gate, which a capable base model already handles).
+`BENCHMARK.md` in this bundle has the with-skill against baseline results across the eval
+iterations, reported as measured. It shows where the skill helps (routing) and where it does not
+(the decidability gate, which a capable base model already handles).
