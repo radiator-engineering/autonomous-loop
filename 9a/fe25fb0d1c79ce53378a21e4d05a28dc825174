@@ -1,0 +1,18 @@
+autonomous-loop/assets/workbench.html
+  h_2e249d121a4557 44,70,194,215,224,239,358-359,450,455-470,474,486,492,554,639,671,690-693,700-702,748,751
+autonomous-loop/references/observability.md
+  h_2e249d121a4557 294-414
+autonomous-loop/scripts/selfcheck_board.mjs
+  h_2e249d121a4557 182,186,196,203-204,210,218,239,246-247,255,275-307,362,368,370-372,465,531,554,571,594,616,639-640,643,662,668-669,671-672,675,737,771,780,797,800,828-833,884,890,900,904,907,915,918-919,937
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "9afe25fb0d1c79ce53378a21e4d05a28dc825174",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
