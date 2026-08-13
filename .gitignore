@@ -6,3 +6,10 @@
 
 # Rebuilt by install.sh --pack; not tracked.
 autonomous-loop-share.zip
+
+# Ephemeral loop run dirs: ledger, driver, captures. Served, never shipped.
+.loop/
+
+# Python build output. install.sh excludes it; git should too — it once shipped to four homes.
+__pycache__/
+*.pyc

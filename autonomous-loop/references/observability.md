@@ -18,6 +18,7 @@ the hero slot per archetype** is each `Surface` line in `archetypes.md`. Citatio
 | `<LEDGER_DIR>/HANDOFF.md` | ledger agent, every round (`writeLedger`) | how does a fresh agent pick this up |
 | `<LEDGER_DIR>/claims.jsonl` | ledger agent, every round (`writeLedger`) | *which* atoms, with what evidence |
 | `<LEDGER_DIR>/artifacts/` | worker/measure agents | *how* it is working, and what the count missed |
+| `<LEDGER_DIR>/activity.jsonl` | optional; any agent, or the harness | what the loop is doing *between* rounds |
 | `<RUNS_JSONL_PATH>` | finalize agent at terminal status | has this target moved across weeks |
 
 The terminal step writes the final board — the status into `progress.json`, one line into
@@ -68,9 +69,8 @@ and `gap` together.
 **The hero renderer takes two values, not five.** `frameHTML` (`workbench.html`) branches on
 `type === 'video'` and emits `<img src=path>` for everything else; `heroHTML` short-circuits on
 `type === 'none'` or a missing `path`. So a hero with `type:"log"` or `"diff"` and a path renders a
-broken image in the board's top slot. Logs and diffs are **per-round artifacts**, where `artHTML`
-renders them as `<pre>` (`stripHTML` in `workbench.html`) — put them in `rounds[].artifacts[]`, never in the
-hero.
+broken image in the board's top slot. Logs and diffs belong in `artifacts/`, where the **Artifacts
+tab** lists them by type with a link — never in the hero.
 
 **Two different things are both called `hero`.** The object above lives in the file. The ledger agent
 *returns* a separate three-value report — `"artifact" | "none" | "absent"` (`LEDGER_SCHEMA`) — about
@@ -144,6 +144,84 @@ finishes `unwitnessed` while the file on disk looks answered. The audit reads th
 the one place it is told a rule rather than left to look: a note still beginning "No capture yet." is
 the seed, and it answers `absent`. Triage tells the two apart by the same wording.
 
+**KNOWN LIMIT — the witness gate checks that the note EXISTS, never that it is TRUE.** `hero.type="none"`
+plus a non-empty note converges, and nothing compares that note against the directory it is a claim
+about. Measured, on a run whose whole purpose was improving this board: the ledger agent wrote
+
+> *"Chrome not available in this environment; capture.sh requires /Applications/Google Chrome.app …
+> headless screenshot capability is required to generate r5-board.png."*
+
+while `r5-board.png` sat in `artifacts/` beside eleven other round captures, all taken by that same
+script, on that same machine, in that same run. Chrome was installed. The capture step had succeeded
+every round. The agent did not look; it composed a plausible reason for an absence that did not
+exist, and the board rendered it as the run's headline evidence — the amber "no visual evidence"
+panel sitting directly on top of a full gallery.
+
+The gate would have accepted it. `witnessed` is satisfied by `none`-with-a-note exactly as it is by a
+real capture, which is deliberate — a loop is allowed to be unable to produce a picture. What is not
+deliberate is that the escape hatch is unfalsifiable: this is the same defect as counting an
+unverified atom, one rung up, and it is being reported by the gate that exists to catch runs which
+report well and show nothing.
+
+The fix is cheap and not yet made: the terminal audit already opens `LEDGER_DIR`, so it can answer a
+fourth scalar — whether `artifacts/` holds any round capture — and a `none` returned beside a
+non-empty capture set is a **lying hero**, demoted exactly like `lyingLedger` already demotes a
+handoff the auditor cannot find. Until then, read a `none` note as a claim, not as a finding, and
+check the gallery yourself. Triage row below.
+
+## `activity.jsonl` — the round in flight
+
+`writeLedger` fires **once per round**. A round routinely runs for minutes and spends dozens of
+agents, so between two writes `progress.json` says nothing and the board is frozen — and a frozen
+board is indistinguishable, to the person watching it, from a hung run. That ambiguity is the whole
+reason this file exists. It is the only view of a round that has not finished.
+
+`workbench_server.py` serves the panel at `/activity.json`, assembled from the first of two sources
+that answers, and it tells the board **which one it got**:
+
+| Source | Cost | Use when |
+|---|---|---|
+| `activity.jsonl` in the ledger dir | tokens, if an agent writes it | any substrate — including a committed CI harness, where no transcript exists |
+| the harness's `<session>/subagents/agent-*.jsonl` | free | an in-session or Workflow run on this machine |
+
+One JSON object per line, appended, never rewritten:
+
+```json
+{"ts":"2026-08-13T14:31:02Z","agent":"verify:auth.ts","phase":"Verify","event":"start"}
+{"ts":"2026-08-13T14:33:40Z","agent":"verify:auth.ts","phase":"Verify","event":"end","status":"ok"}
+```
+
+`event` is `start` or `end`; later lines win, so an `end` closes the agent its `start` opened. A
+half-written trailing line is skipped rather than fatal — something is appending to this file while
+the server reads it, and that is normal.
+
+**The driver cannot write it, so the agents that already run do.** `activityDirective` in
+`assets/loop-template.js` appends a short bookkeeping instruction to every **work** and **verify**
+prompt: one line before the agent starts, one when it finishes. No extra agent and no extra round —
+the only cost is the directive's own tokens, and `ACTIVITY_LOG = false` in Config turns it off.
+
+The directive text is **constant** for a given (phase, label): no timestamp, no round number, no
+counts. Same rule `stuckDirective` follows. A resumed run replays byte-identical prompts from cache,
+so interpolating a clock here would re-pay for every agent in the run on every resume, in order to
+log the resume.
+
+Because the agents write it, this is the source that works on **any** substrate, including a
+committed CI harness where no transcript exists.
+
+The transcript fallback is **auto-detected** when `--transcripts` is not passed: the most recently
+modified `subagents/` dir under `~/.claude/projects`. That is right almost always and wrong the
+moment two sessions run at once, so the board prints that it guessed rather than presenting the
+answer as certain. Pass `--transcripts <session>/subagents` when it matters.
+
+When neither source exists the panel does **not** render empty. It names the two ways to feed it, on
+the same rule the hero slot follows: absent evidence must say what would produce it, because a blank
+box reads as "nothing is happening" and that is exactly the claim it cannot support.
+
+The agent list is capped at `ACTIVITY_MAX` (60) so one enormous round cannot make `/activity.json`
+itself unbounded — the same construction rule `build-dashboard` gives every paginated table. The
+server reports what it dropped as `truncated`, and the board renders that count as a small note next
+to the agent total whenever it is nonzero, so a capped list never reads as a complete one.
+
 ## `runs.jsonl`
 
 One line per run at terminal status; a resume rewrites its own line rather than adding a second:
@@ -159,7 +237,7 @@ board's History panel wants three fields this line does not carry — see the ga
 ## The workbench: launch, LIVE, retention
 
 ```
-python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT>
+python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT> [--transcripts <session>/subagents]
 node   scripts/preflight_launch.mjs <driver.js> <LEDGER_DIR> --workbench http://127.0.0.1:<PORT>
 ```
 
@@ -177,12 +255,41 @@ a `*` `.gitignore`, and `prune_artifacts` in `workbench_server.py` prunes `artif
 whose name matches `r<N>-` / `round_<N>-` are touched, so hand-placed evidence and `framing.json`
 survive.
 
-**Pruning is not free, and the board does not know about it.** `stripHTML`
-(`artHTML` in `workbench.html`) iterates *every* round entry in `progress.json`, so after round 8 at
+**Pruning is not free, and the filmstrip does not know about it.** `renderStrip` (`workbench.html`)
+iterates *every* round entry in `progress.json`, so after round 8 at
 `--keep-rounds 6` rounds 2-3 render as broken images in the filmstrip while the ledger still lists
-them. Expected, not a bug — but if the filmstrip is the deliverable, launch with `--keep-rounds 0`
+them. The **Artifacts tab** does not have this problem — it lists what is on disk, so a pruned round
+is simply absent rather than broken. Expected, not a bug — but if the filmstrip is the deliverable, launch with `--keep-rounds 0`
 and take the disk cost. Round 1 surviving forever is a **converger** rule; for a saturator or
 exhauster it just pins one unrelated early artifact on disk.
+
+### How the board updates, and why it matters
+
+The server **pushes**. It stats the ledger files a few times a second — no reads — and emits one
+server-sent event on `/events` when a digest actually moves, so the page updates within about 200ms
+of a write and is idle the rest of the time. If that connection dies the page falls back to polling
+every 3s, compares the raw response text first, and re-renders only on a real change. The header
+says which transport is live (`live · pushed` vs `live · polling`); they fail differently and a
+watcher who cannot tell them apart cannot trust either.
+
+Every update is a **diff against what is on screen**, and this is a load-bearing property rather
+than an optimisation. The board previously rebuilt eight containers with `innerHTML` on a 3-second
+timer against a file written once per round: it paid that cost roughly sixty times per real change,
+and each time the round a reader had expanded collapsed, a looping `<video>` hero restarted before
+it had played a second of the motion it was in the slot to demonstrate, and a horizontally scrolled
+filmstrip snapped back to round 1 mid-look. The board was busy and blind at the same time.
+
+The rule when editing `assets/workbench.html`: **never assign `innerHTML` to a container a person can
+interact with.** Text goes through `setText` (compares first), whole subtrees through
+`setHTMLIfChanged` (compares a signature first), and lists through `keyed` (reconciles by key, so a
+row still on screen is the *same node object* it was — which is what preserves scroll, selection and
+`<details>` state). `<details open>` is decided at creation only; re-deciding it on every pass is
+what slammed an open round shut three seconds after it was opened.
+
+`scripts/selfcheck_board.mjs` checks all of that, including running the real `keyed` against a fake
+DOM to assert an unchanged list performs **zero** DOM mutations. Like every harness here it carries
+its own red half — five deliberate defects plus a rebuild-everything reconciler — because a comment
+asking the next editor not to re-render is what failed the first time.
 
 ## What a round must capture
 
@@ -220,7 +327,8 @@ first written for, and it is still the row it fits best.
 
 Whatever the target, the hero must be **an image or a video** — a frame battery, a screenshot, a
 flamegraph, a plotted benchmark, a rendered diff captured as an image. A benchmark table, a raw diff,
-a log or a test report goes in `rounds[].artifacts[]`, which renders it. A loop that genuinely cannot
+a log or a test report is written into `artifacts/`, where the Artifacts tab lists it by type and
+links it, and may also be declared in `rounds[].artifacts[]` to tie it to a round. A loop that genuinely cannot
 produce a picture sets `type:"none"` with a note naming what would be needed, and the board renders
 that note in the hero slot.
 
@@ -229,10 +337,16 @@ that note in the hero slot.
 | What you see | What it means | Next read |
 |---|---|---|
 | subtitle reads `waiting for progress.json…` | the **fetch failed** (`load` in `workbench.html`) — wrong dir, server down, or file missing. Not an idle loop | `curl <URL>/progress.json` |
-| header reads `run complete`, nothing updates | polling runs every 3s only while `status === "running"`, and is cleared at terminal (`load` in `workbench.html`) | `status` in the file; reload after a resume |
+| header reads `run complete`, nothing updates | updates run only while `status === "running"`, and stop at terminal (`schedulePoll` in `workbench.html`) | `status` in the file; reload after a resume |
+| counters frozen but the workflow panel is moving | **normal, and the point of the panel** — a round is in flight and `writeLedger` has not fired yet | nothing; watch the phase and the agent ages |
+| both the counters and the workflow panel are frozen | no agent has written a line for over 90s. A round that is genuinely stuck looks exactly like this | the agent ages in the panel; then the run's own return |
+| workflow panel says *"No workflow feed configured"* | neither source resolved — no `activity.jsonl`, and no transcripts dir found or passed | restart the server with `--transcripts`, per the `activity.jsonl` section |
+| workflow panel names agents from another run | the transcript dir was **auto-detected** and a second session is newer. The panel says it guessed | pass `--transcripts <session>/subagents` explicitly |
+| header says `live · polling`, not `live · pushed` | the `/events` stream is not connected — an older server, or the page is on `file://` | `curl -N <URL>/events`; expect `event: change` lines |
 | the workflow returned, and the board still says `running` | the **finalize agent died**. The run's own return says so: `finalized:false`. `progress.json` keeps the last round's `running`, `runs.jsonl` has no line, and `HANDOFF.md` still describes a run in flight | the driver's return value, then re-run the three finalize edits by hand |
 | status badge is the striped violet `b-ungated` | a **reporting gate** failed (`unwitnessed`/`undocumented`) — the atoms are fine, the board or the pickup document is not. Never amber: a failed gate must not look like a benign `stopped` | the audit's finding vs `last_reported` in `progress.json` |
 | hero note starts *"No capture yet. The measure step must write hero.path…"* | that is the `workbench_server.py` seed **verbatim** — the ledger step has never fired | the workflow's ledger task; expect `unwitnessed` |
+| amber "no visual evidence" panel, but the **Artifacts tab is full** | a LYING HERO: the ledger agent wrote a `none` note without opening `artifacts/`. The witness gate accepts it — it checks the note exists, never that it is true | open the gallery; the run is witnessed in fact. Treat the terminal status as unearned and fix the ledger step, not the board |
 | hero says "No visual evidence this round" with a *different* note | the ledger agent wrote `type:"none"` itself — witnessed, and the picture was declined deliberately | the note names what is missing |
 | counters and chart move, hero frozen | the ledger agent is merging head + `rounds[]` but not writing `hero` | fix the ledger prompt; expect `unwitnessed` |
 | hero slot shows a broken image | `hero.type` is `log`/`diff`, or `path` is wrong relative to the ledger dir | the `path` field |
@@ -244,13 +358,17 @@ that note in the hero slot.
 | Gap | Where | Consequence |
 |---|---|---|
 | `hero.type` written by nothing — the ledger prompt names it only for the `"none"` case | `writeLedger`'s hero clause | a video hero renders as `<img>` unless an agent invents the field |
-| `runs.jsonl` lacks `started_at`/`best_composite`/`trajectory` | finalize line vs `loadHistory` in `workbench.html` | History sparkline flat at 0.000 |
+| `runs.jsonl` lacks `started_at`/`best_composite`/`trajectory` | finalize line vs `loadHistory` in `workbench.html` | History sparkline flat (no trajectory points); the best-composite number beside it now falls back to `–` via `fmt()` instead of fabricating `0.000` — the render-side substitution is closed, but finalize still owes the write |
 | `budget`/`model_spend` never written to the ledger head | `writeLedger`'s `head` | Budget panel reads "no budget cap" |
-| Per-round `artifacts[]` / `hero` not written by the driver | the prompt says only "reference" them | the filmstrip stays empty unless the ledger agent writes them |
+| Per-round `artifacts[]` / `hero` not written by the driver | the prompt says only "reference" them | the **hero slot** and the filmstrip stay empty unless the ledger agent writes them. The **Artifacts tab** is unaffected: it reads `artifacts/` off disk, so evidence the run produced is visible whether or not an agent declared it |
 | `bar` (the human-readable target) never written | — | the board's subtitle is blank |
 | `framing.json` generated by nothing | the prompt names the path only | comparability is prompt discipline, not enforced |
 | `hero.commit` unverified | — | a wrong commit caption is possible and has happened before |
-| `HANDOFF.md` and `claims.jsonl` rendered by nothing | `workbench.html` fetches neither | both are terminal work, not a board view |
+| `claims.jsonl` missing vs. empty read the same | `loadClaims` in `workbench.html` | `HANDOFF.md` tells "no file yet" apart from "file is empty", but a missing `claims.jsonl` and a present-but-empty one both fall through to the same "No claims.jsonl yet" text — a cosmetic gap, not a false-positive one |
+| the transcript fallback reads a path this skill does not own | `find_transcript_dir` in `workbench_server.py` | if the harness moves `subagents/`, the fallback goes quiet. It reports its source, so this is visible rather than silent — and `activity.jsonl` is unaffected |
+| agent **phase** is absent from the transcript source | the shards carry the session `slug`, not the driver's `phase()` | the phase row is filled only by `activity.jsonl`. The fallback still shows liveness, names and ages |
+| `activity.jsonl` depends on agents following a prompt | `activityDirective` | an agent that ignores the directive is simply missing from the panel. Nothing verifies the log, and nothing should: a run must never be failed for a bookkeeping line |
+| **Frontier**, **Coherence**, **Ledger** and the terminal agents write no activity line | only work and verify carry the directive | those phases show as gaps in the panel. They are single agents on the round's critical path, and the directive costs prompt budget in every one of them — deliberate, revisit if a frontier step ever gets slow enough to need watching |
 
 Closing any of these is a driver change, not a doc change. Until then, a run that needs the missing
 field has its measure or finalize agent write it explicitly.
