@@ -1,0 +1,18 @@
+.gitignore
+  h_2e249d121a4557 6-8
+README.md
+  h_2e249d121a4557 5-8,10-97,102-106,108-110,112,121-123,125,127,131-133,137,140-143
+share/README.md
+  h_2e249d121a4557 3-6,8-10,12-27,37,39,57,63-64,71-74,76,82-84,88-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "71fdc1255396ffdd09de833774b7c28fc9d4d75a",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
