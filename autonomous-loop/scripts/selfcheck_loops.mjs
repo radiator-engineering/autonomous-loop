@@ -33,6 +33,13 @@
 //                    self-report and the audit disagree the AUDIT wins while the self-report survives
 //                    as board state. The rung cases also run under a second archetype: the ladder is
 //                    shared kernel code, so a mode-specific regression must have nowhere to hide.
+//   heroNoneWithGallery/heroNoneNoGallery/auditNoCaptures — the witness gate's own `lyingLedger`, and
+//                    the last place a gate took an agent's word for something a file could answer.
+//                    `hero.type="none"` used to converge on its own say-so, so a run could declare a
+//                    picture impossible while artifacts/ held a dozen frames — measured, on a run whose
+//                    whole purpose was that board. The audit now counts the directory. The middle case
+//                    is what stops the fix collapsing into "distrust `none`", which would punish a
+//                    genuinely non-visual loop into permanent failure.
 //   deadFinalize   — the terminal step writes the final board (status → progress.json, one line →
 //                    runs.jsonl, the finished HANDOFF.md) and had no schema and no reader: a dead one
 //                    left progress.json reading "running" forever. It cannot change the outcome — the
@@ -198,9 +205,13 @@ function harness(scn) {
   //              round's file sitting there: still present, describing a round that has passed. That
   //              is why the disk keeps the round NUMBER rather than a boolean, and why a run can be
   //              simultaneously "has a handoff" and undocumented.
+  //   captures — files in artifacts/, which ACCUMULATE independently of the hero slot. A round that
+  //              captured something leaves a frame behind whatever the hero slot ends up saying, and
+  //              that independence is the whole point: it is the second reader the witness gate needs
+  //              to tell "no picture was possible" from "a picture exists and the board ignored it".
   // A scenario may override `audit` outright — that is how a dead auditor, a lying ledger writer and a
   // stale claim are expressed, since none of the three is derivable from an honest writer.
-  const disk = { hero: null, handoffRound: null }
+  const disk = { hero: null, handoffRound: null, captures: 0 }
   const agent = async (prompt, opts = {}) => {
     const label = opts.label || ''
     counts[label] = (counts[label] || 0) + 1
@@ -231,6 +242,7 @@ function harness(scn) {
     if (label === 'ledger') {
       const r = scn.ledger ? scn.ledger(n) : { hero: 'artifact', handoff: 'written' }
       if (r && (r.hero === 'artifact' || r.hero === 'none')) disk.hero = r.hero
+      if (r && r.hero === 'artifact') disk.captures++           // a round that captured left a frame
       if (r && r.handoff === 'written') disk.handoffRound = n   // one ledger call per round ⇒ n IS the round
       return r
     }
@@ -239,7 +251,8 @@ function harness(scn) {
       return scn.audit ? scn.audit(disk, counts['ledger'] || 0)
         : { hero: disk.hero || 'absent',
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
-            handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound }
+            handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound,
+            captures: disk.captures }
     }
     if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize') return scn.finalize ? scn.finalize() : { finalized: true }
@@ -308,6 +321,36 @@ const SCENARIOS = {
     // keeps the gate from punishing a genuinely non-visual loop into permanent failure.
     heroNone:      { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
                      expect: r => r.converged === true && r.confirmed === 3 },
+    // …but only when it is TRUE. This is the witness gate's `lyingLedger`, and it closes the asymmetry
+    // that stood as a KNOWN LIMIT for as long as the gate read one place: `none` was accepted on its
+    // own word, so a run could declare "no capture was possible", finish `converged`, and leave four
+    // frames sitting in artifacts/ that the board pointed at none of. Every visible signal here says
+    // success — 3 confirmed atoms, a complete current handoff, a hero slot filled with a legitimate
+    // value — and the ONLY thing that contradicts it is the auditor counting the directory. If
+    // `witnessed` is ever narrowed back to reading the hero slot alone, this is the case that reds.
+    heroNoneWithGallery:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 4 }),
+                     expect: r => r.status === 'unwitnessed' && r.converged === false && r.confirmed === 3 },
+    // The other half, and it is what keeps the case above from being satisfiable by a gate that simply
+    // stopped believing `none`: the same run with an EMPTY directory converges. A loop that genuinely
+    // cannot produce a picture is still allowed to say so and finish.
+    heroNoneNoGallery:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 0 }),
+                     expect: r => r.converged === true && r.confirmed === 3 },
+    // An auditor whose answer the kernel cannot READ is an auditor that did not answer, and `captures`
+    // is load-bearing now, so its absence has to make the whole verdict unusable exactly as a missing
+    // handoffRound does. The fixture is deliberately the OTHERWISE-PERFECT audit — a real capture, a
+    // complete handoff, the right round — because that is the only shape where the shape check is
+    // observable at all: written the obvious way round (hero 'none', no captures) the case passes
+    // whether the check exists or not, since `undefined === 0` is false and the run demotes anyway.
+    // MEASURED as vacuous in exactly that form before it was written this way. Here, dropping the
+    // `captures` clause from usableAudit converges this run.
+    auditNoCaptures:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds }),
+                     expect: r => r.status === 'unwitnessed' && r.converged === false && r.confirmed === 3 },
     // THE HANDOFF GATE. Identical to `happy` in every respect — same items, same verdicts, same 3
     // confirmed atoms, and a hero slot that IS filled — except that HANDOFF.md was never written. The
     // defect it catches: a run that verified every atom, showed a human a picture, and left the next
@@ -357,7 +400,7 @@ const SCENARIOS = {
     lyingLedger:   { enumerate: Q3,
                      verify: (() => { let hit = false
                        return id => (id === 'i2' && !hit ? (hit = true, fail(id, 'major')) : pass(id)) })(),
-                     audit: () => ({ hero: 'artifact', handoff: 'absent', handoffRound: 0 }),
+                     audit: () => ({ hero: 'artifact', handoff: 'absent', handoffRound: 0, captures: 1 }),
                      expect: (r, h) => r.status === 'undocumented' && r.converged === false &&
                        r.confirmed === 3 && h.prompts['ledger'][1].includes('"handoff":"written"') },
     crashedVerify: { enumerate: Q3, verify: id => (id === 'i2' ? null : pass(id)), expect: r => r.converged === false },
@@ -755,7 +798,7 @@ const SCENARIOS = {
     // Off by exactly one, because that is the shape a real stale handoff has — the last round's writer
     // skipped it and the previous round's file stayed behind.
     staleAudit:    { critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => pass(id),
-                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: Math.max(0, rounds - 1) }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: Math.max(0, rounds - 1), captures: rounds }),
                      expect: r => r.status === 'undocumented' && r.converged === false && r.confirmed === 3 },
     panelLies:     { critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => fail(id, 'major'), expect: r => r.converged === false },
     crashedVerify: { critique: () => CRIT(['pass', 'pass', 'pass']), verify: () => null, expect: r => r.converged === false },
