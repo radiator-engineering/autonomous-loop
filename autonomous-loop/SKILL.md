@@ -250,7 +250,7 @@ loops that were hand-rolled Workflow scripts — never touching the template, wr
 and unenforced. So they are now a gate:
 
 ```
-python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT>     # first: stand up the board
+python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT> [--transcripts <session>/subagents]
 node scripts/preflight_launch.mjs <driver.js> <LEDGER_DIR> --workbench http://127.0.0.1:<PORT>
 ```
 
@@ -313,6 +313,10 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
   launches the bundled workbench (`scripts/workbench_server.py`) on the ledger dir. A loop that
   genuinely cannot produce a picture must **say so in the hero slot** and name what would be needed;
   an absent picture must never read as "nothing to show."
+  The ledger is written once a **round**, so the board also carries a **workflow panel** — which
+  agents are running, in which phase, and for how long — fed by `activity.jsonl` or the harness's
+  own transcripts (`references/observability.md`). Without it a round in flight looks exactly like a
+  hung run, which is the one distinction a person watching a long loop actually needs.
   Alongside the board, every round rewrites **`HANDOFF.md`** — the pickup document, what a fresh agent
   reads to continue this run: where it stands, what is confirmed, what is open, what to do next. It is
   rewritten rather than appended to, so a run that dies at round 40 leaves one describing round 40
@@ -374,7 +378,8 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
 3. **Select the substrate** and fill `assets/loop-template.js` for the chosen mode.
 4. **Self-check the kernel and the gate** (`node scripts/selfcheck_loops.mjs`, and
    `node scripts/selfcheck_preflight.mjs` if you touched the gate or the template's region markers).
-   If you edited this skill's own prose, add `node scripts/selfcheck_docs.mjs`.
+   If you edited this skill's own prose, add `node scripts/selfcheck_docs.mjs`; if you touched
+   `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`.
 5. **Stand up the workbench, then pass the launch gate** (`node scripts/preflight_launch.mjs …`).
    Green is the precondition for launching, and the moment you hand the user the dashboard URL.
 6. **Dry-run one round** — show the ledger, the first verified atoms, and the artifacts before

@@ -18,8 +18,11 @@ HOMES=(
   "$HOME/.claude-profile-2"
   "$HOME/.claude-profile-3"
 )
-# Present in source, never installed and never packaged.
-EXCLUDES=(--exclude=evals --exclude=dist --exclude=.DS_Store)
+# Present in source, never installed and never packaged. __pycache__ is here because importing
+# scripts/workbench_server.py once — to unit-test one helper — left a .pyc in the skill, and the next
+# install shipped it to four homes and both bundles before the verify caught the drift. Build output
+# from a dev machine is not part of the skill.
+EXCLUDES=(--exclude=evals --exclude=dist --exclude=.DS_Store --exclude=__pycache__ --exclude='*.pyc')
 SHARE="$SRC/autonomous-loop-share.zip"
 
 MODE="${1:-all}"
@@ -54,6 +57,7 @@ run_gate autonomous-loop selfcheck_loops.mjs
 # scripts/selfcheck_*.mjs to a skill, add the line here in the same change.
 run_gate autonomous-loop selfcheck_preflight.mjs
 run_gate autonomous-loop selfcheck_docs.mjs
+run_gate autonomous-loop selfcheck_board.mjs
 
 # Proof that the list above is not missing one. A harness on disk that nothing runs is invisible, so
 # compare the two sets rather than trusting the list to have been updated.

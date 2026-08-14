@@ -1,17 +1,34 @@
 <!DOCTYPE html>
 <!--
   Autonomous-loop workbench — live progress surface for a running (or finished) loop of any archetype.
-  Zero dependencies, no build step. Reads two files from the same directory:
+  Zero dependencies, no build step. Reads from the same directory:
     ./progress.json   — the live ledger for THIS run (schema: references/observability.md)
     ./runs.jsonl      — one summary line per run, for the longitudinal view (optional)
+    ./activity.json   — what the workflow is doing BETWEEN ledger writes, served by workbench_server.py
+    ./events          — server-sent events; the server pushes when a file actually changes
   Serve the directory with scripts/workbench_server.py (handles no-cache + artifacts + the
-  .gitignore and the render prune), or open over file:// (some browsers block fetch over file://;
-  the server is preferred). Auto-refreshes while status === "running".
+  .gitignore and the render prune, and serves the last two endpoints above). Over file:// the page
+  still works from progress.json alone, minus the push and the workflow panel.
 
   The board LEADS WITH THE CURRENT ARTIFACT — progress.json's `hero` is rendered large at the top,
   with round 1's pinned beside it as the permanent BEFORE and the commit each side actually ran
   printed underneath; counters go below. A loop with no picture must say so via hero.type="none"
   plus a note. Counters tell you the loop is alive; only the artifact tells you it is working.
+
+  ── Why this file reconciles instead of re-rendering ──────────────────────────────────────────
+  This board used to rebuild eight containers with innerHTML on a 3-second timer. Two things were
+  wrong with that, and they compounded. First, a rebuilt subtree is a NEW subtree: the round you
+  expanded collapsed, the hero video restarted from frame one, the filmstrip scrolled back to the
+  left, and text you were mid-way through selecting disappeared — every three seconds, forever.
+  Second, `writeLedger` runs once per ROUND, which is minutes, so the page was paying that cost
+  about sixty times per actual change. It looked frantic and told you nothing new, which is the
+  worst combination available: a watcher cannot tell a busy board from a live run.
+
+  So: the server pushes when something changes (`./events`), and every update below is a diff
+  against what is already on screen. Text is compared before it is written, lists are reconciled by
+  key so a row that stays on screen is the SAME element it was, and the expensive subtrees (hero,
+  chart, per-round bodies) rebuild only when their own signature moves. The rule to hold when
+  editing: never assign innerHTML to a container a person can interact with.
 -->
 <html lang="en">
 <head>
@@ -22,43 +39,51 @@
   :root {
     --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --ink:#e6e9ef; --muted:#9aa4b2;
     --line:#2a2f3a; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+    /* --gate: the REPORTING-gate hue (unwitnessed/undocumented). Derived from --accent
+       (rotated toward violet) rather than an unrelated invented color, so it stays inside
+       the token system the design bar's surface palette (references/observability.md) requires while still reading as distinct from
+       ok/warn/bad. */
+    --gate:#a78bfa;
   }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:24px; align-items:center; flex-wrap:wrap; }
   h1 { font-size:16px; margin:0; letter-spacing:.3px; }
   .sub { color:var(--muted); font-size:12px; }
-  .badge { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge { padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; }
   .b-running{ background:#1f6feb33; color:var(--accent); } .b-converged{ background:#3fb95033; color:var(--ok); }
   .b-stopped{ background:#d2992233; color:var(--warn); } .b-budget{ background:#f8514933; color:var(--bad); }
   .b-backstop{ background:#f8514933; color:var(--bad); }
   /* A failed REPORTING gate (`unwitnessed` / `undocumented`): the run's atoms are fine, the board is
      not. Deliberately unlike both the amber stop and the red blocker — outlined, striped, and the one
      badge on this page that never reads as an ordinary ending. */
-  .b-ungated{ color:#d2a8ff; border:1px solid #d2a8ff88; background:
-    repeating-linear-gradient(135deg,#d2a8ff22 0 6px,#d2a8ff0d 6px 12px); }
-  .tabs { display:flex; gap:8px; padding:12px 22px 0; }
-  .tab { padding:7px 14px; border-radius:8px 8px 0 0; cursor:pointer; color:var(--muted); }
+  .b-ungated{ color:var(--gate); border:1px solid color-mix(in srgb, var(--gate) 53%, transparent); background:
+    repeating-linear-gradient(135deg,color-mix(in srgb, var(--gate) 13%, transparent) 0 6px,color-mix(in srgb, var(--gate) 5%, transparent) 6px 12px); }
+  .tabs { display:flex; gap:8px; padding:16px 24px 0; }
+  .tab { padding:8px 16px; border-radius:8px 8px 0 0; cursor:pointer; color:var(--muted); }
   .tab.active { background:var(--panel); color:var(--ink); }
-  main { padding:18px 22px; }
+  main { padding:16px 24px; }
   .grid { display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 12px; }
-  .stat { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 12px;
+    display:flex; align-items:center; gap:8px; }
+  .stat { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
   .stat:last-child{ border:0; }
   .stat b { font-variant-numeric:tabular-nums; }
+  .delta { font-size:12px; font-variant-numeric:tabular-nums; }
+  .delta.ok { color:var(--ok); } .delta.bad { color:var(--bad); } .delta.muted { color:var(--muted); }
   .round { background:var(--panel2); border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
-  .round summary { cursor:pointer; padding:12px 16px; display:flex; gap:14px; align-items:center; list-style:none; }
+  .round summary { cursor:pointer; padding:12px 16px; display:flex; gap:16px; align-items:center; list-style:none; }
   .round summary::-webkit-details-marker{ display:none; }
   .rnum { font-weight:700; color:var(--accent); min-width:64px; }
   .bar { flex:1; height:8px; background:#0d1017; border-radius:99px; overflow:hidden; }
-  .bar>i { display:block; height:100%; background:linear-gradient(90deg,#1f6feb,#3fb950); }
+  .bar>i { display:block; height:100%; background:linear-gradient(90deg,#1f6feb,#3fb950); transition:width .4s ease; }
   .rbody { padding:0 16px 16px; }
-  .finding { padding:8px 10px; border-radius:8px; margin:6px 0; background:#0d1017; border-left:3px solid var(--line); }
+  .finding { padding:8px 8px; border-radius:8px; margin:8px 0; background:#0d1017; border-left:3px solid var(--line); }
   .sev-blocker{ border-color:var(--bad);} .sev-major{ border-color:var(--warn);} .sev-minor{ border-color:var(--muted);}
-  .finding .c{ font-weight:600;} .finding .m{ color:var(--muted); font-size:12.5px; }
+  .finding .c{ font-weight:600;} .finding .m{ color:var(--muted); font-size:12px; }
   /* The hero: the board leads with the CURRENT artifact, large, above every counter. */
-  .hero .frames { display:flex; gap:14px; align-items:flex-start; }
+  .hero .frames { display:flex; gap:16px; align-items:flex-start; }
   .hero figure { margin:0; flex:1 1 0; min-width:0; }
   .hero img, .hero video { display:block; width:100%; height:auto; border:1px solid var(--line);
     border-radius:8px; background:#0d1017; }
@@ -67,22 +92,70 @@
   .nosha { color:var(--warn); }
   .noart { padding:24px; border:1px dashed var(--warn); border-radius:10px; background:#d2992211; }
   .noart b { color:var(--warn); display:block; margin-bottom:6px; }
-  .strip { display:flex; gap:8px; overflow-x:auto; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .strip { display:flex; gap:8px; overflow-x:auto; margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
   .strip figure { margin:0; flex:0 0 auto; width:124px; }
   .strip img, .strip video { display:block; width:124px; height:auto; border:1px solid var(--line); border-radius:6px; }
-  .strip figcaption { margin-top:3px; font-size:11px; color:var(--muted); text-align:center; }
-  .arts { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-  .art { border:1px solid var(--line); border-radius:8px; overflow:hidden; max-width:240px; background:#0d1017; }
-  .art img, .art video { display:block; max-width:240px; height:auto; }
-  .art .cap { padding:5px 8px; font-size:12px; color:var(--muted); }
-  .art pre { margin:0; padding:8px; max-width:240px; max-height:160px; overflow:auto; font-size:11px; color:var(--muted); }
+  .strip figcaption { margin-top:3px; font-size:12px; color:var(--muted); text-align:center; }
   svg { width:100%; height:220px; display:block; }
   .muted{ color:var(--muted); } .empty{ color:var(--muted); padding:30px; text-align:center; }
-  .backstop { padding:2px 8px; border-radius:999px; border:1px solid #f8514966; background:#f8514922;
-    color:var(--bad); font-size:11px; font-weight:600; letter-spacing:.3px; white-space:nowrap; }
+  .backstop { padding:4px 8px; border-radius:999px; border:1px solid #f8514966; background:#f8514922;
+    color:var(--bad); font-size:12px; font-weight:600; letter-spacing:.3px; white-space:nowrap; }
   #backstop:empty { display:none; }   /* else the empty slot still spends a header gap */
+  .drybadge, .blockerbadge { padding:4px 8px; border-radius:999px; border:1px solid; font-size:12px;
+    font-weight:600; letter-spacing:.3px; white-space:nowrap; }
+  .drybadge { border-color:#d2992266; background:#d2992222; color:var(--warn); }
+  .blockerbadge { border-color:#f8514966; background:#f8514922; color:var(--bad); }
   #hist .runrow { display:flex; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
   #hist .spark { flex:1; height:34px; }
+
+  /* ── The workflow panel ───────────────────────────────────────────────────────────────────
+     Between ledger writes this is the only thing on the page that moves, so it is built to be
+     read at a glance and to be boring when nothing is happening. */
+  .agents { display:flex; flex-direction:column; gap:2px; max-height:340px; overflow-y:auto; }
+  .agent { display:flex; gap:10px; align-items:center; padding:8px 8px; border-radius:8px; }
+  .agent:nth-child(odd) { background:#0d101755; }
+  .agent .dot { width:8px; height:8px; border-radius:99px; background:var(--muted); flex:0 0 auto; }
+  .agent.running .dot { background:var(--accent); animation:pulse 1.8s ease-in-out infinite; }
+  .agent.done .dot { background:#3fb95088; }
+  .agent.fail .dot { background:var(--bad); }
+  .agent .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .agent .ph { color:var(--muted); font-size:12px; flex:0 0 auto; }
+  .agent .age { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; flex:0 0 auto; min-width:52px; text-align:right; }
+  @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+  @media (prefers-reduced-motion:reduce){ .agent.running .dot{ animation:none } .bar>i{ transition:none } }
+  .livechip { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .livechip .dot { width:7px; height:7px; border-radius:99px; background:var(--muted); }
+  .livechip.on .dot { background:var(--ok); }
+  .srcnote { font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .srcnote.guessed { color:var(--warn); }
+  .needsfeed { padding:16px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); font-size:12px; }
+  .needsfeed b { color:var(--ink); display:block; margin-bottom:6px; }
+  .needsfeed code { color:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  .phaserow { display:flex; gap:6px; align-items:center; margin:0 0 10px; flex-wrap:wrap; }
+  .phasetag { padding:4px 8px; border-radius:999px; font-size:12px; background:#0d1017; border:1px solid var(--line); color:var(--muted); }
+  .phasetag.on { border-color:#1f6feb88; color:var(--accent); background:#1f6feb1a; }
+  .phasetag b { font-variant-numeric:tabular-nums; }
+
+  /* Artifacts view: a grid for things you compare by eye, a list for things you open one at a time. */
+  .artgroup { margin-bottom:26px; }
+  .artgroup h3 { font-size:14px; margin:0 0 10px; display:flex; gap:8px; align-items:baseline; }
+  .gal { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+  .gal figure { margin:0; }
+  .gal img, .gal video { display:block; width:100%; height:auto; border:1px solid var(--line);
+    border-radius:8px; background:#0d1017; }
+  .gal img:hover { border-color:var(--accent); }
+  .gal figcaption { margin-top:8px; font-size:12px; color:var(--ink); word-break:break-all; }
+  .filelist { list-style:none; margin:10px 0 0; padding:0; }
+  .filelist li { display:flex; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--line); }
+  .filelist a { color:var(--accent); text-decoration:none; }
+  .filelist a:hover { text-decoration:underline; }
+  .ftype { font-size:12px; padding:4px 8px; border-radius:999px; background:#0d1017; border:1px solid var(--line);
+    color:var(--muted); flex:0 0 auto; min-width:46px; text-align:center; }
+  .t-diff{ color:var(--accent); } .t-log{ color:var(--warn); } .t-data{ color:var(--ok); }
+  .artcount { color:var(--muted); font-weight:400; }
+  .hoff { white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:12px; line-height:1.6; color:var(--ink); margin:0; max-height:400px; overflow-y:auto; }
+  .claimlist .cev { color:var(--muted); font-size:12px; }
 </style>
 </head>
 <body>
@@ -94,11 +167,13 @@
   <span class="badge b-running" id="status">–</span>
   <span id="backstop"></span>
   <div class="sub" id="clock"></div>
+  <div class="sub" id="agentchip"></div>
   <div class="sub" id="refresh" style="margin-left:auto"></div>
 </header>
 
 <div class="tabs">
   <div class="tab active" data-tab="live">Live run</div>
+  <div class="tab" data-tab="arts">Artifacts</div>
   <div class="tab" data-tab="hist">History</div>
 </div>
 
@@ -106,17 +181,48 @@
   <section id="live">
     <!-- Rule 1 of references/observability.md: the artifact comes first, the counters come after. -->
     <div class="panel hero"><h2>Current artifact</h2>
-      <div id="herobody"><div class="empty">waiting for progress.json…</div></div></div>
-    <div class="grid" style="margin-top:18px">
+      <div id="herobody"><div class="empty">waiting for progress.json…</div></div>
+      <div id="stripbody"></div></div>
+    <div class="grid" style="margin-top:16px">
       <div>
-        <div class="panel"><h2>Score trajectory</h2><svg id="chart"></svg></div>
-        <div class="panel" style="margin-top:18px"><h2>Rounds</h2><div id="rounds"><div class="empty">No rounds yet.</div></div></div>
+        <div class="panel"><h2>Workflow activity <span class="livechip" id="livechip"><span class="dot"></span><span id="livetext"></span></span> <span id="acttrunc" class="srcnote" style="display:inline;margin:0"></span></h2>
+          <div id="actsrc" class="srcnote"></div>
+          <div id="phases" class="phaserow"></div>
+          <div id="agents" class="agents"></div>
+          <div id="agentsempty"></div>
+        </div>
+        <div class="panel" style="margin-top:16px"><h2>Progress across rounds</h2><svg id="chart"></svg></div>
+        <div class="panel" style="margin-top:16px"><h2>Rounds</h2><div id="rounds"></div><div id="roundsempty"></div></div>
       </div>
       <aside>
         <div class="panel"><h2>Run</h2><div id="runstats"></div></div>
-        <div class="panel" style="margin-top:18px"><h2>Budget</h2><div id="budget"></div></div>
-        <div class="panel" style="margin-top:18px"><h2>Model spend</h2><div id="spend"></div></div>
+        <div class="panel" style="margin-top:16px"><h2>Budget</h2><div id="budget"></div></div>
+        <div class="panel" style="margin-top:16px"><h2>Model spend</h2><div id="spend"></div></div>
       </aside>
+    </div>
+  </section>
+  <!-- Artifacts get their own view rather than 240px thumbnails wedged between findings. The
+       evidence a round produced is a different question from how the round scored, and squeezing
+       both into one accordion row meant neither could be read: a frame too small to judge, beside a
+       finding list it kept pushing off screen. -->
+  <section id="arts" hidden>
+    <div class="panel"><h2>Evidence on disk <span class="sub" id="artcount"></span></h2>
+      <div class="sub" style="margin-bottom:12px">Read from <code>artifacts/</code> directly, so this shows what the
+        run actually produced — not what an agent remembered to declare in <code>progress.json</code>.</div>
+      <div id="artgroups"></div>
+      <div id="artsempty"></div>
+    </div>
+    <!-- the design bar's blueprint (references/observability.md) names the Evidence tier as "the Artifacts tab, claims, the
+         handoff" — three things. Until this panel, only the first was rendered; HANDOFF.md and
+         claims.jsonl are terminal-work files nothing fetched (references/observability.md's own
+         triage table admitted it). Both live in LEDGER_DIR, same dir this page is served from, so
+         they are read the same way progress.json already is: a relative fetch, no server change. -->
+    <div class="panel" style="margin-top:16px"><h2>Handoff <span class="sub">HANDOFF.md — what a fresh agent reads to pick this run up</span></h2>
+      <div id="handoffbody"></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Claims <span class="sub" id="claimscount"></span></h2>
+      <div class="sub" style="margin-bottom:12px">Read from <code>claims.jsonl</code> — one line for each result this run confirmed, with the evidence that confirmed it.</div>
+      <div id="claimsbody"></div>
     </div>
   </section>
   <section id="hist" hidden>
@@ -126,15 +232,62 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let timer = null;
+let timer = null, pushed = false, lastLedger = '', lastActivity = '';
+// runstats deltas: "Blocked" has no per-round field in the ledger's rounds[] (see roundEntry() in
+// loop-template.js) — only "Confirmed", "Best composite" and "Latest pass" carry the history needed
+// to diff round-over-round from a single payload. Rather than substitute a different quantity for
+// Blocked (forbidden by design bar (references/observability.md) rule 5), track its value across the round boundary
+// client-side: the board only moves once per round (see #agentsempty note above), so a change in
+// rounds.length is a real round advancing, and we snapshot d.blocked exactly then.
+let lastRoundSeen = -1, lastRoundBlocked = null, prevRoundBlocked = null;
 
-document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  const tab = t.dataset.tab;
-  $('#live').hidden = tab !== 'live'; $('#hist').hidden = tab !== 'hist';
+// ── Capture mode ────────────────────────────────────────────────────────────────────────────────
+// `?static=1` is how a headless browser takes a still of this board, and it is not a convenience.
+// The SSE stream is a response that never ends. A screenshotter waits for the page to finish
+// loading; the stream never finishes; the capture hangs instead of failing. Measured: the first
+// attempt to give a run its per-round evidence hung Chrome until it was killed, so the board that
+// exists to prove a loop is working was the one thing that could not be photographed. In capture
+// mode the page fetches once and connects to nothing. `?tab=arts|hist` picks which view to shoot,
+// because the evidence worth keeping is often the gallery rather than the counters.
+const PARAMS = new URLSearchParams(location.search);
+const STATIC = PARAMS.has('static');
+
+function showTab(tab){
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  $('#live').hidden = tab !== 'live'; $('#arts').hidden = tab !== 'arts'; $('#hist').hidden = tab !== 'hist';
   if (tab === 'hist') loadHistory();
-});
+  if (tab === 'arts') loadArtifacts();
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));
+
+// ── Reconcile helpers ───────────────────────────────────────────────────────────────────────────
+// Every write goes through one of these. They exist so that an update which changes nothing touches
+// nothing: no reflow, no lost selection, no restarted media, no collapsed <details>.
+function setText(el, v){ const s = v == null ? '' : String(v); if(el.textContent !== s) el.textContent = s; return el; }
+function setHTMLIfChanged(el, html){ if(el.dataset.sig === html) return false; el.dataset.sig = html; el.innerHTML = html; return true; }
+function setClass(el, cls){ if(el.className !== cls) el.className = cls; }
+function el(tag, cls){ const n = document.createElement(tag); if(cls) n.className = cls; return n; }
+
+// Keyed list reconcile. `create` runs once per key for the life of the row; `update` runs on every
+// pass and must itself be diffing. Rows are moved with insertBefore only when they are genuinely out
+// of order, so a stable list performs zero DOM mutations.
+function keyed(container, items, keyOf, create, update){
+  const prev = container._byKey || (container._byKey = new Map());
+  const next = new Map();
+  let cursor = null;
+  for(const item of items){
+    const k = String(keyOf(item));
+    let node = prev.get(k);
+    if(!node){ node = create(item); node.dataset.key = k; }
+    update(node, item);
+    next.set(k, node);
+    const want = cursor ? cursor.nextSibling : container.firstChild;
+    if(want !== node) container.insertBefore(node, want);
+    cursor = node;
+  }
+  for(const [k, node] of prev) if(!next.has(k)) node.remove();
+  container._byKey = next;
+}
 
 function badge(status){
   // Positive terminal for every archetype → green; blockers/budget → red; caps/plateaus and a stop
@@ -152,7 +305,7 @@ function badge(status){
     blocked:'b-budget',budget_exhausted:'b-budget',runaway_backstop:'b-backstop',
     unwitnessed:'b-ungated',undocumented:'b-ungated',
     capped:'b-stopped',stopped:'b-stopped',inconclusive:'b-stopped'};
-  const el=$('#status'); el.className='badge '+(map[status]||'b-stopped'); el.textContent=(status||'unknown').replace('_',' ');
+  const e=$('#status'); setClass(e, 'badge '+(map[status]||'b-stopped')); setText(e, (status||'unknown').replace('_',' '));
 }
 // Blocker/budget precedence outranks `runaway_backstop`, and a sentinel's `held` is positive at any
 // length — so the status alone never says a run hit the rail.
@@ -161,20 +314,50 @@ function backstopHTML(hit){ return hit===true
 function fmt(n){ return (n===undefined||n===null)?'–':(typeof n==='number'?(Number.isInteger(n)?n.toLocaleString():n.toFixed(3)):n); }
 function elapsed(from){ if(!from) return ''; const s=Math.max(0,(Date.now()-new Date(from))/1000);
   const h=Math.floor(s/3600),m=Math.floor(s%3600/60); return h?`${h}h ${m}m`:`${m}m ${Math.floor(s%60)}s`; }
+function ago(sec){ if(sec==null) return ''; const s=Math.max(0,Math.round(sec));
+  if(s<60) return s+'s'; const m=Math.floor(s/60); if(m<60) return m+'m'; return Math.floor(m/60)+'h '+(m%60)+'m'; }
 
-function chart(rounds, threshold){
-  const svg=$('#chart'), W=640,H=220,pad=30; svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
-  if(!rounds.length){ svg.innerHTML=`<text x="${W/2}" y="${H/2}" fill="#9aa4b2" text-anchor="middle">no data</text>`; return; }
+function chart(rounds, threshold, mode){
+  // Redrawn only when the trajectory itself moves. It is one innerHTML write, but on a 3-second
+  // timer it was also a visible flash on every tick of a chart that had not changed.
+  const svg=$('#chart'), W=640,H=220,pad=30; svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  if(!rounds.length){ setHTMLIfChanged(svg, `<text x="${W/2}" y="${H/2}" fill="#9aa4b2" text-anchor="middle">no data</text>`); return; }
   const xs=rounds.map((_,i)=>pad+i*(W-2*pad)/Math.max(1,rounds.length-1));
   const y=v=>H-pad-v*(H-2*pad);
   const line=(color,accessor)=>{ let d=''; rounds.forEach((r,i)=>{ const v=accessor(r); if(v==null)return; d+=(d?'L':'M')+xs[i]+' '+y(v); });
     return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"/>`; };
-  let g=`<line x1="${pad}" y1="${y(threshold)}" x2="${W-pad}" y2="${y(threshold)}" stroke="#3fb95055" stroke-dasharray="4 4"/>`;
-  g+=`<text x="${W-pad}" y="${y(threshold)-4}" fill="#3fb95099" text-anchor="end" font-size="11">bar ${threshold}</text>`;
-  g+=line('#58a6ff', r=>r.composite);
-  rounds.forEach((r,i)=>{ g+=`<circle cx="${xs[i]}" cy="${y(r.composite)}" r="3.5" fill="#58a6ff"/>`;
+  // The dashed threshold guide is only load-bearing for the converger archetype's stop() —
+  // composite >= PASS_THRESHOLD. The other four archetypes (exhauster/saturator/explorer/sentinel)
+  // stop on open.size===0, a dry-round streak, `answered`, or a blocker, and never reference
+  // PASS_THRESHOLD at all — every archetype still writes it into progress.json unconditionally, so
+  // drawing it for those runs states a goal the run is not actually converging toward. A watcher
+  // reading a flat composite=0 line pinned under "bar 0.9" would take 0.9 as what the run needs to
+  // finish, which is false for a saturator/exhauster/explorer/sentinel run.
+  let g='';
+  if(mode==='converger'){
+    g+=`<line x1="${pad}" y1="${y(threshold)}" x2="${W-pad}" y2="${y(threshold)}" stroke="#3fb95055" stroke-dasharray="4 4"/>`;
+    g+=`<text x="${W-pad}" y="${y(threshold)-4}" fill="#3fb95099" text-anchor="end" font-size="11">bar ${threshold}</text>`;
+  }
+  // Atom trajectory shares the axis with composite: confirmed is normalized against the largest
+  // confirmed+open seen across these rounds, so a flat green line at 2/2 atoms and a flat line at
+  // 40/40 atoms are both "done" at the top of the chart, not silently different heights. That is
+  // the dry-round-streak question this tier owes: are atoms still landing, or has the run plateaued.
+  const maxAtoms=Math.max(1, ...rounds.map(r=>(r.confirmed||0)+(r.open||0)));
+  g+=line('#3fb950', r=>r.confirmed==null?null:r.confirmed/maxAtoms);
+  // The composite SERIES is gated on the archetype for the same reason the threshold guide above it
+  // is, and leaving it ungated undid half of that fix: writeLedger computes composite for the
+  // converger only, so on every other archetype this drew a dead-flat blue line along zero with a
+  // "— composite" legend under it. A watcher reads a flat line at the bottom of a chart as a run
+  // that is scoring nothing, not as a quantity nobody is keeping — which is worse than the empty
+  // panel it replaced, because it looks like a measurement.
+  const showComposite = mode==='converger';
+  if(showComposite) g+=line('#58a6ff', r=>r.composite);
+  rounds.forEach((r,i)=>{ if(showComposite) g+=`<circle cx="${xs[i]}" cy="${y(r.composite)}" r="3.5" fill="#58a6ff"/>`;
+    if(r.confirmed!=null) g+=`<circle cx="${xs[i]}" cy="${y(r.confirmed/maxAtoms)}" r="3.5" fill="#3fb950"/>`;
     g+=`<text x="${xs[i]}" y="${H-8}" fill="#9aa4b2" text-anchor="middle" font-size="10">${r.round}</text>`; });
-  svg.innerHTML=g;
+  if(showComposite) g+=`<text x="${pad}" y="14" fill="#58a6ff" font-size="11">— score</text>`;
+  g+=`<text x="${showComposite?pad+70:pad}" y="14" fill="#3fb950" font-size="11">— ${unit(mode,2)} confirmed (of ${maxAtoms})</text>`;
+  setHTMLIfChanged(svg, g);
 }
 
 function findingHTML(f){ return `<div class="finding sev-${f.severity||'minor'}">
@@ -190,6 +373,9 @@ function findingHTML(f){ return `<div class="finding sev-${f.severity||'minor'}"
 // produced it). A page here took `label=BEFORE` as a URL parameter, kept rendering as the code moved
 // on, and pinned a defect on the wrong commit for weeks — so an absent sha is shown as unknown
 // rather than quietly accepted.
+// It is rebuilt only when its own signature changes. A <video> hero re-created every 3 seconds
+// restarts from frame one and never plays past its first second, which made a looping clip useless
+// as evidence — the one job it was in the slot to do.
 function sha(c){ return c ? `<span class="sha">${esc(String(c).slice(0,10))}</span>`
                           : '<span class="nosha">commit unknown</span>'; }
 function frameHTML(f, fallbackType){
@@ -213,98 +399,432 @@ function heroHTML(d){
   return `<div class="frames">${frames.join('')}</div>${framing}`;
 }
 // Same framing every round ⇒ the rounds stack into a filmstrip, and the trajectory is visible in the
-// pictures rather than only in the chart.
-function stripHTML(rounds){
+// pictures rather than only in the chart. Reconciled by round, through keyed(), in its OWN container
+// (#stripbody) that is a sibling of #herobody rather than folded into its string — heroHTML changes
+// on essentially every round (new hero.path/commit/label), so a shared signature with the hero would
+// mean the whole herobody source string changes every round too, tearing down and rebuilding this
+// horizontally scrolling strip via innerHTML each time and snapping a reader mid-look back to round 1.
+// Keyed by round number: a shot already on screen is the same <figure> node next render, so its
+// scroll offset (and, if it is a <video>, its playback) survives an unrelated hero update.
+function stripFigure(a){
+  const fig = document.createElement('figure');
+  const media = a.type==='video' ? document.createElement('video') : document.createElement('img');
+  if(a.type==='video'){ media.autoplay=true; media.loop=true; media.muted=true; media.playsInline=true; }
+  else media.loading='lazy';
+  media.src = a.path;
+  fig.appendChild(media);
+  const cap = document.createElement('figcaption');
+  cap.textContent = `r${a.round}${a.commit?' · '+String(a.commit).slice(0,7):''}`;
+  fig.appendChild(cap);
+  return fig;
+}
+function renderStrip(rounds){
   const shots = rounds.map(r => {
     const a = r.hero || (r.artifacts||[]).find(x => x.type==='image' || x.type==='video');
     return (a && a.path) ? Object.assign({}, a, {round:r.round}) : null;
   }).filter(Boolean);
-  if(shots.length < 2) return '';
-  return `<div class="strip">${shots.map(a => {
-    const media = a.type==='video' ? `<video src="${esc(a.path)}" autoplay loop muted playsinline></video>`
-                                   : `<img src="${esc(a.path)}" loading="lazy">`;
-    return `<figure>${media}<figcaption>r${a.round}${a.commit?' · '+esc(String(a.commit).slice(0,7)):''}</figcaption></figure>`;
-  }).join('')}</div>`;
+  const wrap = $('#stripbody');
+  if(shots.length < 2){ setClass(wrap, ''); if(wrap.firstChild) setHTMLIfChanged(wrap, ''); wrap._byKey = null; return; }
+  setClass(wrap, 'strip');
+  keyed(wrap, shots, a => a.round, stripFigure, () => {});
 }
 
-function artHTML(a){
-  const cap=`<div class="cap">${esc(a.label||a.type)}${(a.type==='image'||a.type==='video')?' · '+sha(a.commit):''}</div>`;
-  if(a.type==='image') return `<div class="art"><img src="${esc(a.path)}" loading="lazy">${cap}</div>`;
-  if(a.type==='video') return `<div class="art"><video src="${esc(a.path)}" controls muted></video>${cap}</div>`;
-  if(a.type==='log'||a.type==='diff') return `<div class="art"><pre>${esc(a.preview||a.path)}</pre>${cap}</div>`;
-  return `<div class="art"><div class="cap"><a href="${esc(a.path)}" style="color:#58a6ff">${esc(a.label||a.path)}</a></div></div>`;
+
+// ── Rounds ──────────────────────────────────────────────────────────────────────────────────────
+// One <details> per round, created once and never re-created. `open` is decided at CREATION only:
+// the newest round opens itself, and after that the element belongs to the reader. Re-deciding it on
+// every render is what slammed an open round shut three seconds after it was opened, which made the
+// findings list unreadable on any run that was still going.
+function roundRow(r){
+  const node = el('details', 'round');
+  node.innerHTML = `<summary><span class="rnum"></span><span class="bar"><i></i></span><b></b>
+      <span class="sub pass"></span><span class="bs"></span><span class="dry"></span><span class="blk"></span></summary><div class="rbody"></div>`;
+  node.open = !!r._latest;
+  return node;
+}
+// The headline number on a round row must be the number that ARCHETYPE is scored on. `composite` is
+// the converger's, and writeLedger only ever computes it for a converger — every other archetype
+// writes a flat 0. Rendering that anyway drew five rounds of "0.000" beside five empty progress
+// bars on a run that had confirmed eighteen atoms: a scoreboard reporting no progress on a board
+// whose whole job is showing progress. It was not a wrong number, which is what made it bad — it
+// was a real field, correctly read, that means nothing here. Design bar (references/observability.md) rule 5: compute
+// what the archetype is actually scored on, or defer; never substitute a different quantity.
+//
+// So: a converger keeps composite against its bar. Everyone else gets confirmed atoms, drawn
+// against the run's own high-water mark, because for those archetypes the atom count IS the score.
+// What the loop counts, named in the words of the thing being counted.
+//
+// The board used to print "18 atoms". "Atom" is this skill's internal word for the unit a loop
+// counts; it is the right word inside the driver and the wrong word on a screen. The person who
+// walks up to a running loop is a build or ops engineer, not a reader of `references/atom-design.md`,
+// and a headline number whose noun has to be looked up is a headline number that gets ignored.
+//
+// Each name below is the archetype's own atom from references/archetypes.md, said plainly: a
+// converger counts rubric criteria, an exhauster queue items, a saturator findings, an explorer
+// claims, a sentinel invariants ("rules"). The fallback is deliberately vague rather than wrong —
+// an unknown mode gets "results", never a noun borrowed from some other archetype.
+function unit(mode, n){
+  const u = ({ converger:['check','checks'], exhauster:['item','items'], saturator:['finding','findings'],
+               explorer:['claim','claims'], sentinel:['rule','rules'] })[mode] || ['result','results'];
+  return n === 1 ? u[0] : u[1];
+}
+function roundMetric(r){
+  if(r._mode === 'converger') return { text: (r.composite??0).toFixed(3), pct: Math.round((r.composite??0)*100) };
+  const n = r.confirmed ?? 0;
+  return { text: n + ' ' + unit(r._mode, n), pct: Math.round(100 * n / Math.max(1, r._maxAtoms || 1)) };
+}
+function updateRound(node, r){
+  const m = roundMetric(r);
+  setText(node.querySelector('.rnum'), 'Round '+r.round);
+  const fill = node.querySelector('.bar>i');
+  if(fill.style.width !== m.pct+'%') fill.style.width = m.pct+'%';
+  setText(node.querySelector('summary>b'), m.text);
+  setText(node.querySelector('.pass'), passText(r.pass_count, r.total) + (r.total==null ? '' : ' pass'));
+  setHTMLIfChanged(node.querySelector('.bs'), backstopHTML(r.hitBackstop));
+  // `dry` and `hasBlocker` (progress.json → rounds[], references/observability.md) are the two
+  // numbers a stop predicate is actually written in terms of — "am I converging or plateauing?"
+  // (Trends tier) and "where should I look?" (Breakdowns tier), the design bar (references/observability.md). `dry` is
+  // already the running streak-to-date (archetypes.md: "the dry-round counter so the user sees
+  // convergence approaching"), so this round's value IS the counter — no aggregation needed. A flat
+  // composite chart cannot tell a reader whether a run is plateaued or merely between rounds; this can.
+  const dry = r.dry ?? 0;
+  setHTMLIfChanged(node.querySelector('.dry'), dry > 0
+    ? `<span class="drybadge" title="${dry} round${dry===1?'':'s'} in a row found no new ${unit(r._mode,2)}. The run stops by itself after DRY_ROUNDS of these — set in the driver's Config.">dry ${dry}</span>` : '');
+  setHTMLIfChanged(node.querySelector('.blk'), r.hasBlocker
+    ? `<span class="blockerbadge" title="an unresolved blocker was open this round${r.stall ? ' · stall '+r.stall : ''}">blocker${r.stall ? ' · stall '+r.stall : ''}</span>` : '');
+  // Findings only. The round's evidence moved to the Artifacts tab, where a frame is big enough to
+  // judge — the previous 240px thumbnails wedged between findings were too small to read and pushed
+  // the finding list off screen, so neither could do its job. What stays here is a pointer, because
+  // a round with captures and a round with none must still look different at a glance.
+  const arts = (r.artifacts||[]).length;
+  const body = (r.notes?`<div class="sub" style="margin-bottom:8px">${esc(r.notes)}</div>`:'')
+    + ((r.findings||[]).map(findingHTML).join('') || '<div class="muted">no open findings</div>')
+    + (arts ? `<div class="sub" style="margin-top:10px">${arts} artifact${arts===1?'':'s'} declared — see the Artifacts tab</div>` : '');
+  setHTMLIfChanged(node.querySelector('.rbody'), body);
+}
+
+// ── The workflow panel ──────────────────────────────────────────────────────────────────────────
+// The driver has no filesystem access and the ledger is written once a round, so this is the only
+// view of a round IN FLIGHT. Its contract and its two sources are in references/observability.md.
+function agentRow(){
+  const node = el('div', 'agent');
+  node.innerHTML = `<span class="dot"></span><span class="nm"></span><span class="ph"></span><span class="age"></span>`;
+  return node;
+}
+function updateAgent(node, a){
+  const state = a.status === 'fail' ? 'fail' : (a.state || 'done');
+  setClass(node, 'agent ' + state);
+  setText(node.querySelector('.nm'), a.name || a.id);
+  setText(node.querySelector('.ph'), a.phase || '');
+  setText(node.querySelector('.age'), state === 'running' ? 'now' : ago(a.idle_s));
+  const title = [a.id, a.note, a.last_at && ('last activity '+a.last_at)].filter(Boolean).join('\n');
+  if(node.title !== title) node.title = title;
+}
+// ── Artifacts ───────────────────────────────────────────────────────────────────────────────────
+// Grouped by round, newest first, and typed: frames and clips read as a grid because you compare
+// them by eye; logs, diffs and data read as a list because you open one at a time. Mixing the two
+// presentations is what made the old inline strip unreadable.
+function bytes(n){ return n<1024 ? n+' B' : n<1048576 ? (n/1024).toFixed(0)+' KB' : (n/1048576).toFixed(1)+' MB'; }
+function galleryHTML(g){
+  const visual = g.items.filter(i => i.type==='image' || i.type==='video');
+  const rest   = g.items.filter(i => i.type!=='image' && i.type!=='video');
+  const title  = g.round==null ? 'Unfiled' : 'Round '+g.round;
+  const note   = g.round==null ? ' — names no round: the framing spec and hand-placed evidence live here' : '';
+  let h = `<div class="artgroup"><h3>${esc(title)}<span class="sub">${esc(note)} · ${g.items.length} file${g.items.length===1?'':'s'}</span></h3>`;
+  if(visual.length) h += `<div class="gal">${visual.map(i => i.type==='video'
+      ? `<figure><video src="${esc(i.path)}" controls muted loop playsinline preload="metadata"></video>
+         <figcaption>${esc(i.name)}<span class="sub"> · ${bytes(i.bytes)}</span></figcaption></figure>`
+      : `<figure><a href="${esc(i.path)}" target="_blank" rel="noopener"><img src="${esc(i.path)}" loading="lazy" alt="${esc(i.name)}"></a>
+         <figcaption>${esc(i.name)}<span class="sub"> · ${bytes(i.bytes)}</span></figcaption></figure>`).join('')}</div>`;
+  if(rest.length) h += `<ul class="filelist">${rest.map(i =>
+      `<li><span class="ftype t-${esc(i.type)}">${esc(i.type)}</span>
+       <a href="${esc(i.path)}" target="_blank" rel="noopener">${esc(i.name)}</a>
+       <span class="sub">${bytes(i.bytes)} · ${esc(i.mtime)}</span></li>`).join('')}</ul>`;
+  return h + '</div>';
+}
+async function loadArtifacts(){
+  try{
+    const r = await fetch('./artifacts.json?_='+Date.now()); if(!r.ok) throw 0;
+    const a = await r.json();
+    setText($('#artcount'), a.total ? `${a.total} file${a.total===1?'':'s'}` : '');
+    setHTMLIfChanged($('#artgroups'), (a.groups||[]).map(galleryHTML).join(''));
+    setHTMLIfChanged($('#artsempty'), a.total ? '' :
+      `<div class="needsfeed"><b>Nothing in artifacts/ yet.</b>
+       Every round should leave evidence here — the frame or clip that goes in the hero slot, plus the
+       diffs, logs and benchmark output behind the counters. A run that confirmed results and captured
+       nothing finishes <code>unwitnessed</code>, so an empty gallery this far in is a defect to chase,
+       not a quiet state.</div>`);
+  }catch(e){
+    setHTMLIfChanged($('#artsempty'),
+      '<div class="needsfeed"><b>Cannot read artifacts/.</b> This view needs workbench_server.py — over file:// the directory cannot be listed.</div>');
+  }
+  await loadHandoff();
+  await loadClaims();
+}
+// HANDOFF.md is plain text, not JSON, and is rewritten from scratch every round (never appended) —
+// references/observability.md. It is served as a static file straight out of LEDGER_DIR, same as
+// progress.json, so no server route is needed. A missing file is not "no news": a run this far along
+// with none is the `undocumented` gate failing, so the empty state names that rather than going blank.
+async function loadHandoff(){
+  try{
+    const r = await fetch('./HANDOFF.md?_='+Date.now());
+    if(!r.ok) throw 0;
+    const text = await r.text();
+    setHTMLIfChanged($('#handoffbody'), text.trim()
+      ? `<pre class="hoff">${esc(text)}</pre>`
+      : '<div class="needsfeed"><b>HANDOFF.md is empty.</b></div>');
+  }catch(e){
+    setHTMLIfChanged($('#handoffbody'),
+      '<div class="needsfeed"><b>No HANDOFF.md on disk yet.</b> The ledger step rewrites it every round — ' +
+      'a run this far along with none is <code>undocumented</code>, not idle.</div>');
+  }
+}
+// claims.jsonl: one {id, evidence} object per line, appended (never rewritten) once per atom newly
+// confirmed that round — references/observability.md. Parsing is its own pure function so it can be
+// exercised without a fetch (see EVIDENCE in selfcheck_board.mjs); a line that fails to parse is
+// skipped rather than aborting the whole render, because one malformed line must not blank the rest.
+function claimsHTML(text){
+  const items = [];
+  for(const line of String(text||'').split('\n')){
+    const s = line.trim(); if(!s) continue;
+    try{ items.push(JSON.parse(s)); }catch(e){ /* skip a malformed line, keep the rest */ }
+  }
+  if(!items.length) return '';
+  return `<ul class="filelist claimlist">${items.map(c =>
+    `<li><span class="ftype t-data">${esc(c.id ?? '?')}</span>
+     <span class="cev">${esc(c.evidence ?? '')}</span></li>`).join('')}</ul>`;
+}
+async function loadClaims(){
+  try{
+    const r = await fetch('./claims.jsonl?_='+Date.now());
+    const text = r.ok ? await r.text() : '';
+    const html = claimsHTML(text);
+    const n = html ? (html.match(/<li>/g)||[]).length : 0;
+    setText($('#claimscount'), n ? `${n} claim${n===1?'':'s'}` : '');
+    setHTMLIfChanged($('#claimsbody'), html ||
+      '<div class="needsfeed"><b>No claims.jsonl yet.</b> Nothing has been confirmed with evidence this run — ' +
+      'or the ledger step has not run its first round.</div>');
+  }catch(e){
+    setHTMLIfChanged($('#claimsbody'),
+      '<div class="needsfeed"><b>Cannot read claims.jsonl.</b> This view needs workbench_server.py.</div>');
+  }
+}
+
+function renderActivity(act){
+  const chip = $('#livechip'), agents = act.agents || [];
+  chip.classList.toggle('on', act.running > 0);
+  setText($('#livetext'), act.running ? `${act.running} running` : (act.total ? `${act.total} done` : ''));
+  setText($('#agentchip'), act.running ? `● ${act.running} agent${act.running===1?'':'s'} working` : '');
+  // The server caps the agent list at ACTIVITY_MAX and reports how many it dropped. A capped list
+  // that doesn't say so reads as complete when it isn't — the same false-negative the hero slot
+  // guards against, just for a list instead of a picture.
+  setText($('#acttrunc'), act.truncated ? `+${act.truncated} more not shown` : '');
+
+  // Which phase the round is in, and how many agents are in each. This is the loop-relevant view:
+  // "4 running" says the machine is busy, "Verify 4" says the round is past its workers and is now
+  // being checked — which is the difference between watching a loop and watching a progress bar.
+  const phases = {};
+  for(const a of agents){ const p = a.phase || '—'; (phases[p] = phases[p] || {n:0, live:0}).n++;
+    if(a.state === 'running') phases[p].live++; }
+  const order = ['Frontier','Work','Coherence','Verify','Ledger'];
+  const seen = Object.keys(phases).sort((x,y) => {
+    const a = order.indexOf(x), b = order.indexOf(y);
+    return (a<0?99:a) - (b<0?99:b) || x.localeCompare(y); });
+  setHTMLIfChanged($('#phases'), seen.length && !(seen.length===1 && seen[0]==='—')
+    ? seen.map(p => `<span class="phasetag${phases[p].live?' on':''}">${esc(p)} <b>${phases[p].live||phases[p].n}</b></span>`).join('')
+    : '');
+
+  const src = $('#actsrc');
+  src.classList.toggle('guessed', !!act.guessed);
+  setText(src, act.source === 'ledger' ? 'source: activity.jsonl in the run directory'
+    : act.source === 'transcripts'
+      ? `source: harness transcripts${act.guessed ? ' — auto-detected, and a second session running now would be the wrong one. Pass --transcripts to be sure.' : ''}`
+      : '');
+  src.hidden = act.source === 'none';
+
+  // An empty panel and an unconfigured one are different facts, and the board says which. This is
+  // the same rule the hero slot follows: absent evidence must name what would produce it.
+  const needs = act.source === 'none';
+  setHTMLIfChanged($('#agentsempty'), needs
+    ? `<div class="needsfeed"><b>No workflow feed configured.</b>
+       This panel shows what the loop is doing between ledger writes — which agents are running, in
+       which phase, and for how long. Two ways to fill it:<br><br>
+       1. Restart the server with <code>--transcripts &lt;session&gt;/subagents</code>, or<br>
+       2. have an agent append events to <code>activity.jsonl</code> in this directory
+       (<code>{"ts","agent","phase","event","status"}</code> per line).<br><br>
+       Without it the board only moves once per round, and a long round is indistinguishable from a
+       hung one.</div>`
+    : (agents.length ? '' : '<div class="muted" style="padding:6px 0">No agent activity recorded yet.</div>'));
+  keyed($('#agents'), agents, a => a.id, agentRow, updateAgent);
 }
 
 function render(d){
-  $('#target').textContent = d.target || 'Autonomous loop';
-  $('#bar').textContent = d.bar ? ('Bar: '+d.bar) : '';
-  badge(d.status); $('#backstop').innerHTML = backstopHTML(d.hitBackstop);
-  $('#clock').textContent = d.started_at ? ('elapsed '+elapsed(d.started_at)) : '';
+  setText($('#target'), d.target || 'Autonomous loop');
+  setText($('#bar'), d.bar ? ('Bar: '+d.bar) : '');
+  badge(d.status); setHTMLIfChanged($('#backstop'), backstopHTML(d.hitBackstop));
+  setText($('#clock'), d.started_at ? ('elapsed '+elapsed(d.started_at)) : '');
   const rounds = d.rounds||[];
-  $('#herobody').innerHTML = heroHTML(d) + stripHTML(rounds);
-  chart(rounds, d.pass_threshold ?? 0.9);
+  setHTMLIfChanged($('#herobody'), heroHTML(d));
+  renderStrip(rounds);
+  chart(rounds, d.pass_threshold ?? 0.9, d.mode);
 
-  $('#runstats').innerHTML =
+  // A number with no delta cannot distinguish progress from a standstill (the design bar, references/observability.md), so
+  // each headline stat below is diffed against the prior round wherever the ledger carries that
+  // history (rounds[-2] vs rounds[-1]); see the "Blocked" comment at lastRoundSeen for the one field
+  // that has to be tracked client-side instead.
+  const prevRound = rounds.length > 1 ? rounds[rounds.length-2] : null;
+  const confirmedDelta = prevRound ? (rounds.at(-1).confirmed ?? 0) - (prevRound.confirmed ?? 0) : null;
+  const passDelta = prevRound ? (rounds.at(-1).pass_count ?? 0) - (prevRound.pass_count ?? 0) : null;
+  const bestNow = rounds.length ? Math.max(...rounds.map(r=>r.composite??0)) : null;
+  const bestBefore = rounds.length > 1 ? Math.max(...rounds.slice(0,-1).map(r=>r.composite??0)) : null;
+  const bestDelta = bestNow!=null && bestBefore!=null ? bestNow - bestBefore : null;
+  if (rounds.length !== lastRoundSeen) {
+    prevRoundBlocked = lastRoundBlocked;
+    lastRoundBlocked = d.blocked ?? null;
+    lastRoundSeen = rounds.length;
+  }
+  const blockedDelta = prevRoundBlocked!=null && lastRoundBlocked!=null ? lastRoundBlocked - prevRoundBlocked : null;
+
+  setHTMLIfChanged($('#runstats'),
     row('Status', d.status) + row('Rounds', rounds.length) +
-    row('Best composite', Math.max(-1,...rounds.map(r=>r.composite??0)).toFixed(3)) +
-    row('Latest pass', rounds.length? `${rounds.at(-1).pass_count??'?'}/${rounds.at(-1).total??'?'}`:'–') +
-    row('Threshold', d.pass_threshold ?? '–') +
-    (d.hitBackstop===true ? `<div class="stat"><span class="muted">Backstop</span>${backstopHTML(true)}</div>` : '');
+    // "Confirmed 41" is not a fact until the noun is there. See unit() for why the board says
+    // "findings"/"items"/"checks" and never "atoms".
+    row('Confirmed '+unit(d.mode,2), d.confirmed ?? '–', confirmedDelta) +
+    row('Blocked', d.blocked ?? '–', blockedDelta) +
+    // loop-template.js's writeLedger only defines progress() (the source of rounds[].composite) for
+    // the converger; every other archetype's ledger writes a literal 0 every round. Printing that 0
+    // as "Best composite" reads as a real, unmoving score for a quantity the archetype never tracked
+    // — the same "flat line reads as a real number" failure fixed below for Threshold. So it's shown
+    // only for the one archetype it's true for, same guard as Threshold.
+    (d.mode==='converger'
+      ? row('Best score', rounds.length ? bestNow.toFixed(3) : '–', bestDelta, 3)
+      : `<div class="stat"><span class="muted">Best score</span><span class="sub" style="text-align:right">not scored — this run counts ${unit(d.mode,2)}</span></div>`) +
+    row('Passing latest round', rounds.length? passText(rounds.at(-1).pass_count, rounds.at(-1).total):'–', passDelta) +
+    // Every archetype writes pass_threshold into progress.json, but it only gates the converger's
+    // stop() (composite >= PASS_THRESHOLD) — exhauster/saturator/explorer/sentinel stop on
+    // open.size===0, a dry streak, `answered`, or a blocker, never on this number. Printing it as a
+    // stat for those runs states a goal the run isn't actually converging toward, so it's shown only
+    // for the one archetype it's true for.
+    (d.mode==='converger' ? row('Threshold', d.pass_threshold ?? '–') : '') +
+    (d.hitBackstop===true ? `<div class="stat"><span class="muted">Backstop</span>${backstopHTML(true)}</div>` : ''));
 
   if(d.budget){ const b=d.budget, pct=b.total? Math.min(100,100*b.spent/b.total):0;
-    $('#budget').innerHTML = row('Spent', fmt(b.spent)) + row('Total', fmt(b.total)) +
+    setHTMLIfChanged($('#budget'), row('Spent', fmt(b.spent)) + row('Total', fmt(b.total)) +
       `<div class="bar" style="margin-top:8px"><i style="width:${pct}%"></i></div>
-       <div class="sub" style="margin-top:4px">${pct.toFixed(0)}% of budget</div>`;
-  } else $('#budget').innerHTML='<div class="muted">no budget cap</div>';
+       <div class="sub" style="margin-top:4px">${pct.toFixed(0)}% of budget</div>`);
+  } else setHTMLIfChanged($('#budget'), '<div class="muted">no budget cap</div>');
 
   const spend = d.model_spend || {};
-  $('#spend').innerHTML = Object.keys(spend).length
-    ? Object.entries(spend).map(([k,v])=>row(k, fmt(v))).join('') : '<div class="muted">–</div>';
+  setHTMLIfChanged($('#spend'), Object.keys(spend).length
+    ? Object.entries(spend).map(([k,v])=>row(k, fmt(v))).join('')
+    : '<div class="muted">not tracked — nothing in progress.json writes model_spend for this run.</div>');
 
-  $('#rounds').innerHTML = rounds.length ? rounds.slice().reverse().map(r=>{
-    const pct = Math.round((r.composite??0)*100);
-    const arts = (r.artifacts||[]).map(artHTML).join('');
-    const finds = (r.findings||[]).map(findingHTML).join('') || '<div class="muted">no open findings</div>';
-    return `<details class="round" ${r.round===rounds.length?'open':''}>
-      <summary><span class="rnum">Round ${r.round}</span>
-        <span class="bar"><i style="width:${pct}%"></i></span>
-        <b>${(r.composite??0).toFixed(3)}</b>
-        <span class="sub">${r.pass_count??'?'}/${r.total??'?'} pass</span>
-        ${backstopHTML(r.hitBackstop)}</summary>
-      <div class="rbody">
-        ${r.notes?`<div class="sub" style="margin-bottom:8px">${esc(r.notes)}</div>`:''}
-        ${finds}
-        ${arts?`<div class="arts">${arts}</div>`:''}
-      </div></details>`;
-  }).join('') : '<div class="empty">No rounds yet.</div>';
+  // `_mode` and `_maxAtoms` ride along because a round row cannot answer "how far along is this?"
+  // from the round alone — the scale it should be drawn against is a property of the RUN.
+  const maxAtoms = rounds.length ? Math.max(...rounds.map(r => r.confirmed ?? 0), 1) : 1;
+  const newestFirst = rounds.slice().reverse().map(r => Object.assign({}, r,
+    {_latest: r.round === rounds.length, _mode: d.mode, _maxAtoms: maxAtoms}));
+  keyed($('#rounds'), newestFirst, r => r.round, roundRow, updateRound);
+  // The empty state is a SIBLING of the reconciled list, never a child of it: a placeholder living
+  // inside the container becomes the node the first real row gets inserted before, and the list ends
+  // up rendering under the words "No rounds yet."
+  setHTMLIfChanged($('#roundsempty'), rounds.length ? '' : '<div class="empty">No rounds yet.</div>');
 
-  $('#refresh').textContent = d.status==='running' ? 'live · refreshing' : 'run complete';
-  if(d.status==='running'){ if(!timer) timer=setInterval(load,3000); } else { clearInterval(timer); timer=null; }
+  // The header says how the page is being fed, because "live" and "polling every 3s" fail
+  // differently and a watcher who cannot tell them apart cannot trust either.
+  // In capture mode the page is connected to nothing, so saying "polling" would put a false claim
+  // about the feed into the one frame that gets kept as evidence.
+  setText($('#refresh'), STATIC ? 'static capture'
+    : d.status==='running' ? (pushed ? 'live · pushed' : 'live · polling') : 'run complete');
+  schedulePoll(d.status === 'running');
 }
-function row(k,v){ return `<div class="stat"><span class="muted">${k}</span><b>${fmt(v)}</b></div>`; }
+function row(k,v,delta,decimals){
+  return `<div class="stat"><span class="muted">${k}</span><b>${fmt(v)}${deltaHTML(delta,decimals)}</b></div>`;
+}
+// `total` is a real "how many to be worked" denominator only for archetypes whose mode.init sets
+// state.total (converger's rubric size, exhauster's queue length) — see loop-template.js:roundEntry.
+// saturator/explorer/sentinel never set it and roundEntry now reports it as null there rather than
+// falling back to pass_count's own value, which used to make every such round read a tautological
+// "N/N" (design bar (references/observability.md) rule 5: never substitute a different quantity, even disclosed). A
+// null total renders as a plain count with a note, never as a fraction that is guaranteed 100%.
+function passText(pc, total){
+  return total==null ? `${pc??'?'} confirmed · this run has no fixed total to work through` : `${pc??'?'}/${total}`;
+}
+// null/undefined delta = no prior round to compare against (round 1, or a field the ledger doesn't
+// carry history for yet) — say nothing rather than print a fake "+0" for a comparison that never
+// happened. A real zero renders "±0" so a standstill is visibly reported, not just absent.
+function deltaHTML(delta,decimals){
+  if(delta===null||delta===undefined||Number.isNaN(delta)) return '';
+  const n = decimals ? Number(delta.toFixed(decimals)) : delta;
+  const cls = n>0?'ok':(n<0?'bad':'muted');
+  const sign = n>0?'+':(n<0?'–':'±');
+  return ` <span class="delta ${cls}">(${sign}${Math.abs(n)})</span>`;
+}
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// ── Transport ───────────────────────────────────────────────────────────────────────────────────
+// Preferred: the server pushes when a file actually changes, so the page is idle between writes and
+// updates within ~200ms of one. Fallback: poll, but compare the raw text first — an unchanged
+// payload must cost nothing beyond the fetch, and re-rendering identical data is the whole defect
+// this page was rewritten to remove.
 async function load(){
-  try{ const r=await fetch('./progress.json?_='+Date.now()); if(!r.ok) throw 0; render(await r.json()); }
-  catch(e){ $('#bar').textContent='waiting for progress.json… (serve this dir with workbench_server.py)'; }
+  try{
+    const r = await fetch('./progress.json?_='+Date.now()); if(!r.ok) throw 0;
+    const text = await r.text();
+    if(text !== lastLedger){ lastLedger = text; render(JSON.parse(text)); }
+  }catch(e){ setText($('#bar'), 'waiting for progress.json… (serve this dir with workbench_server.py)'); }
+  try{
+    const r = await fetch('./activity.json?_='+Date.now()); if(!r.ok) throw 0;
+    const text = await r.text();
+    if(text !== lastActivity){ lastActivity = text; renderActivity(JSON.parse(text)); }
+  }catch(e){ /* file:// or an older server: the panel stays as it is rather than blanking */ }
+  // A new capture landing mid-round is the strongest evidence the loop is working, so the gallery
+  // follows the same push — but only while it is the tab being looked at.
+  if(!$('#arts').hidden) loadArtifacts();
+}
+function schedulePoll(running){
+  const want = !STATIC && running && !pushed && document.visibilityState === 'visible';
+  if(want && !timer) timer = setInterval(load, 3000);
+  if(!want && timer){ clearInterval(timer); timer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  // A hidden tab that keeps polling spends the machine on pixels nobody is looking at; one that
+  // wakes up stale is worse, so refresh once on the way back in.
+  if(document.visibilityState === 'visible'){ load(); } else schedulePoll(false);
+});
+function connect(){
+  if(STATIC) return;   // an endless stream is an unfinished page load; see "Capture mode" above
+  if(!window.EventSource) return;
+  let es;
+  try{ es = new EventSource('./events'); }catch(e){ return; }
+  es.addEventListener('change', load);
+  es.onopen = () => { pushed = true; schedulePoll(false); };
+  es.onerror = () => { pushed = false; load(); };   // EventSource retries on its own; polling covers the gap
 }
 async function loadHistory(){
   try{
     const r=await fetch('./runs.jsonl?_='+Date.now()); if(!r.ok) throw 0;
     const runs=(await r.text()).trim().split('\n').filter(Boolean).map(JSON.parse);
     if(!runs.length) throw 0;
-    $('#histbody').innerHTML = runs.slice().reverse().map(run=>{
+    setHTMLIfChanged($('#histbody'), runs.slice().reverse().map(run=>{
       const traj=run.trajectory||[]; const W=200,H=34;
       const pts=traj.map((v,i)=>`${i*(W/Math.max(1,traj.length-1))},${H-v*H}`).join(' ');
       return `<div class="runrow">
         <div style="min-width:150px"><b>${esc(run.target||run.run_id||'run')}</b> ${backstopHTML(run.hitBackstop)}
           <div class="sub">${esc(run.started_at||'')} · ${run.rounds||0} rounds · ${esc(run.status||'')}</div></div>
         <svg class="spark" viewBox="0 0 ${W} ${H}"><polyline points="${pts}" fill="none" stroke="#58a6ff" stroke-width="2"/></svg>
-        <b>${(run.best_composite??0).toFixed(3)}</b></div>`;
-    }).join('');
-  }catch(e){ $('#histbody').innerHTML='<div class="empty">No runs.jsonl found. Each finished run appends one line here for the longitudinal view.</div>'; }
+        <b>${fmt(run.best_composite)}</b></div>`;
+    }).join(''));
+  }catch(e){ setHTMLIfChanged($('#histbody'), '<div class="empty">No runs.jsonl found. Each finished run appends one line here for the longitudinal view.</div>'); }
 }
+if(PARAMS.get('tab')) showTab(PARAMS.get('tab'));
 load();
+connect();
+// The elapsed clock is the one value that changes with no file behind it, so it ticks on its own
+// rather than being a reason to re-fetch anything. A repeating timer also keeps a headless
+// browser's virtual clock from ever going idle, so capture mode leaves it unstarted.
+if(!STATIC) setInterval(() => { const t=$('#clock').textContent; if(t.startsWith('elapsed') && lastLedger){
+  try{ const d=JSON.parse(lastLedger); if(d.status==='running'&&d.started_at) setText($('#clock'),'elapsed '+elapsed(d.started_at)); }catch(e){} } }, 1000);
 </script>
 </body>
 </html>

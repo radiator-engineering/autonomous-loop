@@ -84,6 +84,14 @@ const HANDOFF = LEDGER_DIR + '/HANDOFF.md'   // the PICKUP DOCUMENT: what a fres
                                           // run. Rewritten every round (never appended to) so a run that dies
                                           // at round 40 still leaves one that describes round 40. Derived from
                                           // LEDGER_DIR exactly like LEDGER, so it carries no fill marker.
+const ACTIVITY = LEDGER_DIR + '/activity.jsonl'  // append-only; what the board shows BETWEEN ledger writes.
+                                          // writeLedger fires once per ROUND, and a round runs for minutes, so
+                                          // without this the board is frozen for the whole time work is actually
+                                          // happening — and a frozen board is indistinguishable from a hung run,
+                                          // which is the one question a person watching a long loop is asking.
+                                          // The driver cannot write it (no filesystem access), so the agents that
+                                          // ALREADY run each round append to it. No extra agent, no extra round.
+const ACTIVITY_LOG = true                 // set false only where prompt budget is tighter than observability
 const BRIEF = LEDGER_DIR + '/BRIEF.md'    // the intake, written BEFORE the run and gated by the launch gate
                                           // (scripts/preflight_launch.mjs BRIEF). The handoff carries its
                                           // framing forward so "what this run is for" is the human's answer,
@@ -871,7 +879,7 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   //    strong tier; a stuck item also gets the change-approach directive appended to its prompt.
   phase('Work')
   const worked = await parallel(batch.map(item => () =>
-    agent(mode.workerPrompt(item, state) + stuckDirective(item.id),
+    agent(mode.workerPrompt(item, state) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
       { ...((item.severity === 'blocker' || state.escalate.has(item.id) || isStuck(item.id)) ? TIER.escalate : TIER.work),
         phase: 'Work', label: `work:${item.id}` })
       .then(out => ({ item, out }))
@@ -910,7 +918,7 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   phase('Verify')
   const verdicts = await parallel(worked.map(w => () => {
     if (w == null || w.out == null) return null   // worker crash → unverified
-    return agent(mode.verifyPrompt(w.item, w.out, state),
+    return agent(mode.verifyPrompt(w.item, w.out, state) + activityDirective('Verify', `verify:${w.item.id}`),
       { ...TIER.verify, phase: 'Verify', label: `verify:${w.item.id}`, schema: VERDICT_SCHEMA })
   }))
 
@@ -1236,6 +1244,22 @@ function stuckDirective(id) {
     `(b) can the INSTRUMENT disagree with reality, or does it read the same record it certifies? ` +
     `(c) is the fix landing in a file the RUNNING artifact never loads (a stale vendored build)?`
 }
+function activityDirective(phase, label) {
+  // Mid-round visibility, paid for by agents that were going to run anyway. The driver has no
+  // filesystem access, so this is the only way the board learns anything between ledger writes.
+  //
+  // The text is CONSTANT for a given (phase, label) — no timestamp, no round number, no counts.
+  // Same reason stuckDirective holds its tongue below the threshold: a resumed run replays
+  // byte-identical prompts from cache, and interpolating a clock here would silently re-pay for
+  // every agent in the run on every resume, to log the resume.
+  if (!ACTIVITY_LOG) return ''
+  return `\n\nBOOKKEEPING (first and last actions; not part of the task, never let it change your ` +
+    `answer): append one line to ${ACTIVITY} before you start — ` +
+    `{"ts":"<ISO-8601 now>","agent":"${label}","phase":"${phase}","event":"start"} — and one when ` +
+    `you finish, same shape with "event":"end" and "status":"ok" or "fail". Create the file if it ` +
+    `does not exist. Append only; never rewrite or truncate it, because other agents are appending ` +
+    `to it at the same time.`
+}
 function blockerKey(b) {
   // Sentinel violations are keyed by invariant (their ids are round-prefixed); everything else by id.
   return MODE === 'sentinel' ? (b.invariant || b.id) : b.id
@@ -1243,7 +1267,14 @@ function blockerKey(b) {
 function sameBlocked(b, item) { return blockerKey(b) === blockerKey(item) }
 function round3(x) { return Math.round((x || 0) * 1000) / 1000 }
 function roundEntry(grew) {
-  const total = state.total || state.confirmed.length
+  // `total` is a real "how many to go" denominator ONLY for archetypes whose mode.init sets
+  // state.total (converger: rubric size; exhauster: queue length). saturator/explorer/sentinel
+  // never set it — they have no "total to be worked" concept, an unknown-size set or a standing
+  // watch, not a queue with a length. Falling back to state.confirmed.length there used to make
+  // pass_count and total IDENTICAL by construction every round, so `${pass}/${total}` always read
+  // 100% — a substituted quantity presented as a measured ratio, exactly what DESIGN-CONTRACT.md
+  // §1 rule 5 forbids. Report null instead so the board can say "not applicable" rather than lie.
+  const total = (state.total != null) ? state.total : null
   const passCount = MODE === 'converger' ? state.passing.size : state.confirmed.length
   return {
     round: state.round, composite: round3(mode.progress ? mode.progress(state) : 0),
