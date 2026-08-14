@@ -269,7 +269,7 @@ python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT> [--transcripts <s
 node scripts/preflight_launch.mjs <driver.js> <LEDGER_DIR> --workbench http://127.0.0.1:<PORT>
 ```
 
-Six gates, each fail-closed, each naming its own fix:
+Seven gates, each fail-closed, each naming its own fix:
 
 - **SELFCHECK** — `selfcheck_loops.mjs` exits 0.
 - **DESCENT** — the driver's four kernel regions hash **identical** to the template's. A
@@ -292,6 +292,15 @@ Six gates, each fail-closed, each naming its own fix:
   another path — also measured, which is why the gate compiles the source itself (compiling is not
   running: no agent is spawned, no token spent). The unbound-name half catches the commonest way to
   make one: a fill marker replaced with a bare word where a quoted string was meant.
+- **DRYRUN** — the driver **runs**, against a mocked runtime: every `agent()` answered from a table,
+  no tokens, no filesystem. PARSES reads the file and so is blind to scope — a name bound in one
+  function and read in another is bound *somewhere*, and the scan clears it while the run still
+  throws. Closing that statically needs a real JS parser, which this skill has no dependency for, so
+  the driver is executed instead and V8 resolves the names. Only a `ReferenceError` fails the gate:
+  mock data cannot manufacture "x is not defined", while a shape mismatch produces a `TypeError` that
+  may well be the mock's fault, and a gate that fires on its own limits gets deleted. KNOWN LIMIT: it
+  covers the paths the mock reaches, so a name read only inside a rarely-taken branch is still
+  uncovered by both checks — a smaller hole than either leaves alone.
 - **BRIEF** — `<LEDGER_DIR>/BRIEF.md` exists with all six Step 0 sections answered.
 - **LIVE** — a workbench is serving **this** ledger dir, proven by a nonce written and fetched back.
   Comparing served content against disk is *not* enough and was measured returning GREEN against a

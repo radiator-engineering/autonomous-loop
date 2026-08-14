@@ -10,7 +10,7 @@
 // the skill's Step 5 ("stand up observability, give the user the URL") could not stop them,
 // because a step is something you can skip and a gate is not.
 //
-// So the five things the skill PROMISES are checked here as facts on disk, in the source, and on
+// So the six things the skill PROMISES are checked here as facts on disk, in the source, and on
 // the wire:
 //
 //   BRIEF     the run was elicited from a human, not assumed — the intake questions are answered
@@ -19,6 +19,8 @@
 //             which no region hash can cover because Config sits above every region
 //   FILLED    no <<PLACEHOLDER>> survived into a runnable driver
 //   PARSES    the driver compiles, and every name it reads is a name something defines
+//   DRYRUN    the driver RUNS — against a mocked runtime, so the names PARSES cannot scope-check
+//             are resolved by V8 instead, for no tokens and no side effects
 //   LIVE      a workbench is serving THIS ledger dir right now, proven by fetching from it
 //
 // Usage:
@@ -235,6 +237,50 @@ function freeNames(src) {
   return [...free].sort()
 }
 
+// ---- the dry run's mocked harness ----------------------------------------------------------
+// Enough of a fake Workflow runtime to make a driver of ANY archetype execute its own code, with
+// every `agent()` answered from a table instead of a model. Shapes are the ones the template's own
+// schemas declare, so the happy path of each MODES block runs rather than bailing at the first read.
+//
+// This is deliberately NOT selfcheck_loops.mjs's harness. That one proves the kernel's INVARIANTS and
+// needs the fixtures, expectations and 100-odd scenarios to do it; this one asks a single much smaller
+// question — does this file, as filled, execute — and answering it must not drag a second suite into
+// the launch path. The two are allowed to differ because they are checking different things: that one
+// is about what the kernel decides, this one is about whether this driver can run at all.
+function dryHarness(cap) {
+  let calls = 0
+  let rounds = 0
+  const agent = async (prompt, opts = {}) => {
+    if (++calls > cap) throw new DryRunCap()
+    const label = opts.label || ''
+    if (label === 'enumerate')          return { items: [{ id: 'dry1', task: 't' }, { id: 'dry2', task: 't' }] }
+    if (label === 'charter')            return { subquestions: [{ id: 'q1', question: 'q' }, { id: 'q2', question: 'q' }] }
+    if (label.startsWith('critique:'))  return { total: 2, criteria: [{ id: 'r1', region: 'r1', status: 'pass', fix: 'f' },
+                                                                     { id: 'r2', region: 'r2', status: 'pass', fix: 'f' }] }
+    if (label.startsWith('find:'))      return { candidates: [{ where: 'dry.js:1', claim: 'c' }] }
+    if (label === 'hypothesize')        return { experiments: [{ id: 'e1', subq: 'q1', hypothesis: 'h', method: 'm' }] }
+    if (label === 'poll')               return { violations: [] }
+    if (label.startsWith('work:'))      return 'done'
+    if (label.startsWith('verify:'))    return { id: label.slice(7), pass: true, evidence: 'dry run' }
+    if (label === 'ledger')             { rounds++; return { hero: 'artifact', handoff: 'written' } }
+    if (label === 'audit')              return { hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 1 }
+    if (label === 'finalize')           return { finalized: true }
+    return 'ok'
+  }
+  return {
+    rt: {
+      agent,
+      parallel: async (thunks) => Promise.all(thunks.map(t => Promise.resolve().then(t).catch(() => null))),
+      pipeline: async () => { throw new Error('pipeline not used by the template') },
+      log: () => {}, phase: () => {},
+      budget: { total: null, spent: () => 0, remaining: () => Infinity },
+      args: undefined,
+    },
+    stats: () => ({ calls, rounds }),
+  }
+}
+class DryRunCap extends Error {}
+
 // ---- SELFCHECK: the stop logic is code, so it is tested as code ---------------------------
 try {
   execFileSync(process.execPath, [SELFCHECK], { stdio: 'pipe' })
@@ -369,6 +415,52 @@ if (driverSrc !== null) {
         `Reading it throws ReferenceError at the moment the line runs — usually inside a round-1 prompt.`)
     }
   }
+
+  // ---- DRYRUN: execute the driver, with every agent answered from a table --------------------
+  // PARSES's scan reads the file and is blind to SCOPE: a name bound in one function and read in
+  // another is bound *somewhere*, so the scan clears it and the run still throws. Closing that
+  // statically needs a real JS parser, and this skill ships no dependencies. So close it dynamically
+  // instead — V8 resolves names for real, and it does it for free: the driver runs here against a
+  // mocked runtime, spending no tokens and touching no filesystem, exactly as selfcheck_loops.mjs
+  // runs the template. Anything that would throw on an executed path throws HERE, before launch.
+  //
+  // ONLY a ReferenceError fails this gate, and the narrowness is the point. Mock data cannot
+  // manufacture "x is not defined" — a bad shape produces a TypeError, and TypeErrors here may well
+  // be this harness failing to match a MODES block the operator wrote rather than a defect in it.
+  // Failing on those would make the gate fire on its own limitations, and a launch gate that cries
+  // wolf gets deleted. TDZ errors ("cannot access before initialization") are ReferenceErrors too,
+  // and they are real defects, so they fail correctly.
+  //
+  // KNOWN LIMIT, stated rather than implied: this covers the paths the mock REACHES. A name read only
+  // inside, say, a blocker-escalation branch is not exercised, and the scan above does not see scope,
+  // so between them there is a small hole neither closes. It is smaller than either alone.
+  if (compiles) {
+    const CAP = 400   // a driver that has not finished by here has executed plenty; see below
+    const { rt, stats } = dryHarness(CAP)
+    const run = new AsyncFunction('agent', 'parallel', 'pipeline', 'log', 'phase', 'budget', 'args',
+      stripExport(driverSrc))
+    try {
+      await run(rt.agent, rt.parallel, rt.pipeline, rt.log, rt.phase, rt.budget, rt.args)
+      notes.push(`dry run: completed, ${stats().calls} mocked agent call(s) over ${stats().rounds} round(s)`)
+    } catch (e) {
+      if (e instanceof ReferenceError) {
+        fail('DRYRUN', `the driver threw ReferenceError while running: ${e.message}. This is a name the ` +
+          `file does define somewhere but cannot see from where it is read — PARSES's scan is not ` +
+          `scope-aware, which is exactly why the driver is also RUN here. It would throw the same way ` +
+          `on the real run, at whatever hour that line was first reached.`)
+      } else if (e instanceof DryRunCap) {
+        // Not a failure. The cap exists so an unbounded driver cannot spin this gate forever, and by
+        // the time it fires the driver has executed hundreds of calls — which is the coverage this
+        // gate was after. Say what was and was not established rather than reporting a clean pass.
+        notes.push(`dry run: no ReferenceError in ${CAP} mocked agent calls (stopped at the cap, not at ` +
+          `the driver's own terminal predicate — that predicate is proven separately by SELFCHECK)`)
+      } else {
+        notes.push(`dry run: reached ${stats().calls} mocked agent call(s), then ${e.constructor.name}: ` +
+          `${e.message}. NOT counted as a failure — the mock cannot know your MODES block's contract, ` +
+          `so this is as likely to be the mock's shape as your driver's defect. Worth a look.`)
+      }
+    }
+  }
 }
 
 // ---- BRIEF: proof the run was elicited, not assumed ---------------------------------------
@@ -439,7 +531,7 @@ if (ok) {
     driver: driverPath,
     ledgerDir,
     workbench,
-    gates: ['SELFCHECK', 'DESCENT', 'FILLED', 'PARSES', 'BRIEF', 'LIVE'],
+    gates: ['SELFCHECK', 'DESCENT', 'FILLED', 'PARSES', 'DRYRUN', 'BRIEF', 'LIVE'],
     // No timestamp: this file is a record of WHAT passed, and the run's own ledger carries when.
   }
   writeFileSync(join(ledgerDir, 'PREFLIGHT.json'), JSON.stringify(receipt, null, 2) + '\n')
