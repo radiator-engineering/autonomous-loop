@@ -58,6 +58,14 @@
 //                      It is legal source and a ReferenceError at the moment of use, and the moment
 //                      of use is normally a round-1 prompt. The fixture fills a marker with a bare
 //                      word instead of a quoted string, which is how the recorded failure was made.
+//                      Trips PARSES and DRYRUN both, and is asserted that way: the defect is real to
+//                      each of them, and pretending otherwise would be the fixture lying.
+//   scopedName         the case only DRYRUN can catch, and therefore the gate's whole justification.
+//                      The name IS bound — inside a function — so the source scan clears it exactly
+//                      as it clears correct code, and reading it at top level still throws. Closing
+//                      that statically needs a real JS parser and this skill ships no dependencies,
+//                      so the driver is RUN instead and V8 resolves the name. Delete DRYRUN and this
+//                      is the one case that reds.
 //   noBrief            the intake is the record that a human was ASKED what done means. Catches
 //                      BRIEF degrading into "a file exists somewhere" or being skipped entirely.
 //   stubBrief          the same gate one level down: BRIEF.md present, headings all correct, one
@@ -482,9 +490,30 @@ try {
     "const TARGET = 'selfcheck-fixture'",
     'const TARGET = selfcheckFixtureTarget',
     'Config (bare word where a string was meant)')
+  // BOTH gates fire here, and that is the honest expectation rather than a drifted fixture: the name
+  // is bound nowhere (PARSES sees it) and reading it throws (DRYRUN sees it too). Asserting only
+  // PARSES would be asserting something false about a defect both gates are supposed to catch.
   check('unboundName',
     runPreflight({ driver: writeDriver('driver-unbound', unbound), ledgerDir: green.dir, workbench: green.url }),
-    1, ['PARSES'])
+    1, ['DRYRUN', 'PARSES'])
+
+  // THE CASE THAT ONLY DRYRUN CAN CATCH, and therefore the one that justifies the gate existing at
+  // all. `scopedName` IS bound — inside a function — so the scan above clears it, exactly as it would
+  // clear any correct program. It is READ at top level, where that binding is not visible, so V8
+  // throws ReferenceError the moment the line runs. This is the scope hole PARSES cannot close
+  // without a real JS parser, and the whole argument for running the driver instead of only reading
+  // it. If DRYRUN is ever removed, this case reds and nothing else does.
+  const scoped = tamperOneLine(fillTemplate(green.dir),
+    "const TARGET = 'selfcheck-fixture'",
+    "function dryScopeProbe() { const scopedName = 'selfcheck-fixture'; return scopedName }\n" +
+    'const TARGET = scopedName',
+    'Config (name bound in an inner scope, read at top level)')
+  const scopedPath = writeDriver('driver-scoped', scoped)
+  const s = runPreflight({ driver: scopedPath, ledgerDir: green.dir, workbench: green.url })
+  must(!s.gates.includes('PARSES'),
+    'PARSES now catches the scoped fixture too, so this case no longer isolates DRYRUN; give it a ' +
+    'binding the scan genuinely cannot see, or DRYRUN loses its only independent proof')
+  check('scopedName', s, 1, ['DRYRUN'])
 
   // -- BRIEF family: their own live ledgers, so LIVE stays green and BRIEF fires alone -----------
   const noBriefLedger = await makeLedger('no-brief', { brief: null })
