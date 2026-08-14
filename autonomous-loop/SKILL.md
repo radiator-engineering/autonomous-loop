@@ -25,22 +25,29 @@ The power is not "an agent trying harder for longer." It is two things, and ever
 both or it fails the way ungrounded loops always fail — drifting, gaming its own judgment, and
 declaring success it didn't earn:
 
-1. **Context isolation.** The driver holds compressed state (a ledger) and nothing else. Every
-   worker and verifier runs in a *fresh* context. No single transcript accumulates, so
-   instruction-following never rots and the loop can run indefinitely.
+1. **Context isolation.** The driver holds one small file of counted state — the **ledger** — and
+   nothing else. Every worker and verifier runs in a *fresh* context. No single transcript
+   accumulates, so instruction-following never rots and the loop can run indefinitely.
 2. **Counted progress under fail-closed verification.** A worker never certifies its own output; a
-   separate verifier must tie a "done" to a concrete, checkable signal. Progress is *counted from
-   verified atoms in code*, never read off a model's gestalt. A crashed verifier is an unverified
-   mandate, not a pass. This is what makes "done" mean done.
+   separate verifier must tie a "done" to a concrete, checkable signal. Progress is *counted in code
+   from verified atoms*, never read off a model's gestalt. An **atom** is the one unit a loop
+   counts, and each shape counts a different thing: a rubric criterion, a queue item, a confirmed
+   finding, a grounded claim, an invariant held. A crashed verifier leaves its atom **unverified** —
+   work handed out and never checked back in — which is not a pass. This is what makes "done" mean
+   done.
 
-## The universe: two knobs, five archetypes
+Three words carry the rest of this document: **atom** (above), **frontier** and **stop predicate**
+(next section). Everything else is ordinary English.
 
-Every autonomous loop is two pluggable pieces over one shared kernel:
+## The universe: two knobs, five shapes
+
+Every autonomous loop is the same machinery with two parts swapped out:
 
 - **The frontier** — where the next unit of work comes from.
 - **The stop predicate** — how you know you're done.
 
-Set those two and you have named the loop. That is the whole taxonomy:
+Set those two and you have named the loop. There are five useful settings, and this document calls
+each one an **archetype** — a loop shape, nothing more:
 
 | Archetype | Frontier (next work) | Stop predicate | Canonical ask |
 |---|---|---|---|
@@ -54,7 +61,8 @@ Two facts about this table drive everything downstream:
 
 - **Only the frontier and the stop predicate change.** Isolation, counted progress, fail-closed
   verification, the blocker gate, budget, and observability are identical across all five. That
-  shared part is the **kernel** (`references/kernel.md`), and it is where the correctness lives.
+  shared part — the code every archetype runs unchanged — is the **kernel**
+  (`references/kernel.md`), and it is where the correctness lives.
 - **The archetypes compose.** A real engagement is often explore (find what matters) → converge
   (hit the bar) → sentinel (hold it), and an exhauster frequently runs a mini-converger per item.
   The router's job is to name the *first* loop and the sequence.
@@ -76,7 +84,7 @@ gate checks (Step 4):
 | **Archetype** — recommend one from Step 1, ask them to confirm | The user often knows the set is bigger than it looks (exhauster → saturator). |
 | **Atom + verify contract** — this is what I'll count; is it the right unit? | A counted number is only worth what its atom is worth, and the atom is a judgment about their domain. |
 | **Stop** — the terminal predicate; unbounded, or a bounded probe? | Unbounded-vs-capped is a spending decision. |
-| **Evidence** — what do you want to SEE each round? | The whole reason the hero slot exists. Ask what a good round *looks* like, not just what it scores. |
+| **Evidence** — what do you want to SEE each round? | The whole reason the board's **hero slot** — the one picture it leads with — exists. Ask what a good round *looks* like, not just what it scores. |
 | **Autonomy + budget** — checkpointed or autonomous, and the ceiling | Theirs to spend. |
 
 Write the answers to `<LEDGER_DIR>/BRIEF.md` under those six `##` headings *before* building
@@ -167,7 +175,12 @@ mechanism and the evidence). When you generate a loop, verify all of them are pr
    rendered its "an absent picture must never read as nothing to show" placeholder underneath a
    success. Counting verified atoms and never checking that any of it became visible is the same
    defect as counting unverified ones. Note what the gate does **not** ask: not that the picture be
-   good, not that it improved — only that it exists and that its absence was said out loud.
+   good, not that it improved — only that it exists and that its absence was said out loud. The
+   escape hatch is checked rather than trusted: the audit also counts the image files in
+   `artifacts/`, and `hero.type="none"` returned beside a non-empty gallery is a **lying hero** —
+   demoted, not believed. Measured: an agent wrote "headless screenshot capability is required" while
+   twelve captures from that same script sat in that same directory. A `none` nobody can falsify is
+   the unverified-atom defect wearing the gate's own uniform.
 9. **A run that left no pickup document may not call itself a success.** Every positive terminal
    status is also gated on `HANDOFF.md` — what a fresh agent reads to continue this run — being
    present *and describing the round the run actually ended on*. It is rewritten every round, never
@@ -224,7 +237,9 @@ node scripts/selfcheck_loops.mjs      # zero-token, deterministic; exits non-zer
 It executes the actual template against a mocked harness for every archetype and asserts the kernel
 invariants per archetype: a clean run reaches its positive terminal status; a run that verified
 every atom but never filled the hero slot is `unwitnessed`, not converged, while the same run
-declaring `hero.type="none"` converges normally, and a crashed ledger writer fails closed; a run that
+declaring `hero.type="none"` converges normally — unless `artifacts/` is full, in which case the
+`none` is a lying hero and demotes (`heroNoneWithGallery`, `heroNoneNoGallery`, `auditNoCaptures`) —
+and a crashed ledger writer fails closed; a run that
 wrote no `HANDOFF.md`, or one describing an earlier round, is `undocumented` (`handoffAbsent`,
 `staleHandoff`, `bothMissing`, `deadLedger`), and a ledger agent that claims a file the terminal audit
 cannot find is believed *by neither gate* (`lyingLedger`, `deadAuditor`); a crashed verifier can
@@ -254,7 +269,7 @@ python3 scripts/workbench_server.py <LEDGER_DIR> --port <PORT> [--transcripts <s
 node scripts/preflight_launch.mjs <driver.js> <LEDGER_DIR> --workbench http://127.0.0.1:<PORT>
 ```
 
-Five gates, each fail-closed, each naming its own fix:
+Six gates, each fail-closed, each naming its own fix:
 
 - **SELFCHECK** — `selfcheck_loops.mjs` exits 0.
 - **DESCENT** — the driver's four kernel regions hash **identical** to the template's. A
@@ -269,6 +284,14 @@ Five gates, each fail-closed, each naming its own fix:
   in that span a run is meant to tune (`quality-first` shifts every tier up one).
 - **FILLED** — no unfilled `<<MARKER>>` survives. An unfilled knob either crashes at startup or,
   worse, reads as a number and silently disarms a predicate.
+- **PARSES** — the driver **compiles**, and every name it reads is bound somewhere in the file.
+  Measured: a driver passed every other gate here and then died 24 ms into round 1 on `question is
+  not defined`. Each gate had been honest and none had opened the file as code, so the operator got a
+  green launch, a workbench URL, and a run that was over before they read the URL. Not `node --check`,
+  which exits 0 on a driver with an unbalanced paren once `export const meta` puts Node's checker on
+  another path — also measured, which is why the gate compiles the source itself (compiling is not
+  running: no agent is spawned, no token spent). The unbound-name half catches the commonest way to
+  make one: a fill marker replaced with a bare word where a quoted string was meant.
 - **BRIEF** — `<LEDGER_DIR>/BRIEF.md` exists with all six Step 0 sections answered.
 - **LIVE** — a workbench is serving **this** ledger dir, proven by a nonce written and fetched back.
   Comparing served content against disk is *not* enough and was measured returning GREEN against a

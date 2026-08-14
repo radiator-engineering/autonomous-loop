@@ -239,7 +239,7 @@ const LEDGER_SCHEMA      = { type: 'object', additionalProperties: false, requir
 // field somebody could be tempted to reason from instead of measure. `handoffRound` is what makes
 // staleness detectable at all: a handoff describing round 3 and one describing round 40 are the same
 // file to any check that only asks whether it exists.
-const AUDIT_SCHEMA       = { type: 'object', additionalProperties: false, required: ['hero', 'handoff', 'handoffRound'], properties: { hero: { type: 'string', enum: ['artifact', 'none', 'absent'] }, handoff: { type: 'string', enum: ['complete', 'incomplete', 'absent'] }, handoffRound: { type: 'integer' } } }
+const AUDIT_SCHEMA       = { type: 'object', additionalProperties: false, required: ['hero', 'handoff', 'handoffRound', 'captures'], properties: { hero: { type: 'string', enum: ['artifact', 'none', 'absent'] }, handoff: { type: 'string', enum: ['complete', 'incomplete', 'absent'] }, handoffRound: { type: 'integer' }, captures: { type: 'integer' } } }
 // The terminal step is the only writer of the FINAL board: it stamps the terminal status into
 // progress.json, appends the run's line to runs.jsonl, and finalizes HANDOFF.md. It had no schema and
 // nothing read its return, so a dead finalize left progress.json reading "running" forever — a
@@ -1020,6 +1020,10 @@ const auditRaw = await agent(
   `- handoffRound: the integer that "## Where it stands" opens with ("Round N"). Report the number ` +
   `THE FILE CLAIMS — not the round you were told this run reached, and not a guess; 0 if the file is ` +
   `absent or names no round.\n` +
+  `- captures: how many image files (.png/.jpg/.gif/.svg/.webp) are in ${LEDGER_DIR}/artifacts/. ` +
+  `Count them; 0 if the directory is missing or holds none. This is asked SEPARATELY from hero on ` +
+  `purpose — hero is what the board points at, this is what the run actually produced, and the two ` +
+  `disagreeing is the finding.\n` +
   `Do NOT paste file contents back.`,
   { ...TIER.mechanical, phase: 'Ledger', label: 'audit', schema: AUDIT_SCHEMA })
 const audit = usableAudit(auditRaw) ? auditRaw : null
@@ -1084,7 +1088,22 @@ const hitBackstop = UNBOUNDED && state.round >= ROUND_LIMIT
 // verified every atom but left nothing for the next agent still may not call itself a success. Like
 // `unwitnessed` this is DEMOTE-ONLY — it can never invent a positive status, and the confirmed count
 // is still reported truthfully in both cases, because the gate demotes the STATUS, not the count.
-const witnessed = audit !== null && (audit.hero === 'artifact' || audit.hero === 'none')
+// The `none` branch is the one that needed a second reader, and this is the fix for the asymmetry
+// that stood here as a KNOWN LIMIT: the handoff gate had `lyingLedger` — a writer claiming a file the
+// auditor cannot find is believed by neither gate — and the witness gate had no equivalent, because
+// its whole question was answered out of ONE place, the hero slot. So a run could set
+// hero.type="none" with a note reading "no capture was possible", satisfy the gate honestly-looking,
+// and finish `converged` while `artifacts/` held a dozen frames nobody was ever pointed at. That is
+// the failure this rung exists to stop, arrived at from the other side: not a run that showed
+// nothing, but a run that showed nothing while HAVING something.
+//
+// So `none` now means what it says — no picture exists — and the auditor counts the directory to
+// check it. A real capture (`artifact`) needs no such test; it is the honest answer and it stands on
+// its own. Note what this does NOT do: it never promotes. A run with a full gallery and hero="none"
+// is demoted to `unwitnessed`, not quietly upgraded to witnessed on the gallery's behalf, because the
+// gate is about what the board LEADS WITH and a frame nobody points at is a frame nobody sees.
+const witnessed = audit !== null &&
+  (audit.hero === 'artifact' || (audit.hero === 'none' && audit.captures === 0))
 const documented = audit !== null && audit.handoff === 'complete' && audit.handoffRound === state.round
 const status =
   hasOpenBlocker(state) || state.gap || stalled(state) ? 'blocked'
@@ -1121,7 +1140,14 @@ const fin = await agent(
   (audit !== null && audit.hero === 'artifact'
     ? `A capture exists: read the top-level "hero" object in ${LEDGER} and add a one-line pointer to ` +
       `its path (and its "before", if set) under "Where it stands". Do NOT re-derive or guess the path. `
-    : `No capture was produced this run; say so in one line under "Where it stands". `) +
+    : audit !== null && audit.captures > 0
+      // The gallery is full and the board points at none of it. Say THAT, not "no capture was
+      // produced" — which is what this branch used to say unconditionally, and it would have been a
+      // false sentence written into the one document the next agent reads.
+      ? `${audit.captures} capture(s) exist in ${LEDGER_DIR}/artifacts/ but the hero slot points at ` +
+        `none of them, which is why this run is not witnessed. Say so in one line under "Where it ` +
+        `stands" and name the directory, so the next agent can promote one. `
+      : `No capture was produced this run; say so in one line under "Where it stands". `) +
   `Carry "Traps" forward unchanged plus anything the ending taught. Keep the whole file under ~150 ` +
   `lines and cite paths instead of pasting content.\n` +
   `Return {"finalized": true} only if ALL THREE edits landed on disk; {"finalized": false} if any of ` +
@@ -1205,7 +1231,7 @@ function usable(v) {
 function usableAudit(a) {
   return !!a && (a.hero === 'artifact' || a.hero === 'none' || a.hero === 'absent') &&
     (a.handoff === 'complete' || a.handoff === 'incomplete' || a.handoff === 'absent') &&
-    Number.isInteger(a.handoffRound)
+    Number.isInteger(a.handoffRound) && Number.isInteger(a.captures) && a.captures >= 0
 }
 function withinBudget() { return !budget.total || budget.remaining() > RESERVE }
 function openBlockers(state) { return state.blocked }   // entries are removed the round they clear, below

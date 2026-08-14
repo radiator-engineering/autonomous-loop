@@ -48,6 +48,16 @@
 //                      document nobody would ever find. DESCENT checks the derivation itself.
 //   unfilledMarker     an unfilled `<<KNOB>>` either crashes at startup or, worse, reads as a value
 //                      and disarms a predicate. Catches FILLED being narrowed to "the driver parses".
+//   brokenSyntax       MEASURED: a driver passed every gate and died 24 ms into round 1. No gate had
+//                      opened the file as code. This case also pins the MECHANISM — `node --check` is
+//                      the obvious implementation and exits 0 on this exact fixture, because the
+//                      driver opens with `export const meta` and Node's checker takes a different
+//                      path given module syntax. If PARSES is ever "simplified" back to --check, this
+//                      case is what goes red.
+//   unboundName        the half compiling cannot see: a name the driver READS that nothing DEFINES.
+//                      It is legal source and a ReferenceError at the moment of use, and the moment
+//                      of use is normally a round-1 prompt. The fixture fills a marker with a bare
+//                      word instead of a quoted string, which is how the recorded failure was made.
 //   noBrief            the intake is the record that a human was ASKED what done means. Catches
 //                      BRIEF degrading into "a file exists somewhere" or being skipped entirely.
 //   stubBrief          the same gate one level down: BRIEF.md present, headings all correct, one
@@ -291,8 +301,9 @@ const tamperKernel = (src) => tamperOneLine(src,
 // REGION 'terminal-status' — the witness latch: the only thing standing between "the run verified
 // atoms" and "a human saw any of it". Hard-coding it true reopens the whole unwitnessed rung.
 const tamperTerminal = (src) => tamperOneLine(src,
-  "const witnessed = audit !== null && (audit.hero === 'artifact' || audit.hero === 'none')",
-  "const witnessed = true",
+  "const witnessed = audit !== null &&\n" +
+  "  (audit.hero === 'artifact' || (audit.hero === 'none' && audit.captures === 0))",
+  'const witnessed = true',
   'terminal-status region (witness latch)')
 // REGION 'shared-helpers' — the patience predicate. Returning false means a run that is stuck on a
 // blocker with nothing landing never ends: BLOCKER_PATIENCE stops bounding anything.
@@ -378,7 +389,7 @@ try {
   if (existsSync(receiptPath)) unlinkSync(receiptPath)
   const g = runPreflight({ driver: greenDriver, ledgerDir: green.dir, workbench: green.url })
   const receiptOk = existsSync(receiptPath) &&
-    ['SELFCHECK', 'DESCENT', 'FILLED', 'BRIEF', 'LIVE']
+    ['SELFCHECK', 'DESCENT', 'FILLED', 'PARSES', 'BRIEF', 'LIVE']
       .every(x => (JSON.parse(readFileSync(receiptPath, 'utf8')).gates || []).includes(x))
   const greenOk = g.code === 0 && g.gates.length === 0 && /preflight: GREEN/.test(g.out) && receiptOk
   line(greenOk, 'green', `exit=${g.code} (want 0)  gates=[${g.gates.join(',')}] (want [])  receipt=${receiptOk}`)
@@ -442,6 +453,38 @@ try {
   check('unfilledMarker',
     runPreflight({ driver: writeDriver('driver-unfilled', unfilled), ledgerDir: green.dir, workbench: green.url }),
     1, ['FILLED'])
+
+  // -- PARSES family: both edits land in Config, ABOVE every hashed region, so DESCENT stays green
+  //    and PARSES is the only gate with anything to say. That placement is the point of both cases:
+  //    a driver can be byte-perfect everywhere the kernel lives and still be unable to run.
+  const broken = tamperOneLine(fillTemplate(green.dir),
+    "const RUN_ID = 'selfcheck-preflight-run'",
+    "const RUN_ID = 'selfcheck-preflight-run' (",
+    'Config (deliberate syntax error)')
+  const brokenPath = writeDriver('driver-broken-syntax', broken)
+  // The mechanism assertion. `node --check` — the obvious way to write this gate — exits 0 on this
+  // file, so a PARSES built on it would certify a driver that cannot compile. Proven here rather
+  // than asserted in a comment, because the comment would not notice being wrong.
+  let nodeCheckCode = 0
+  try { execFileSync(process.execPath, ['--check', brokenPath], { stdio: 'pipe' }) }
+  catch (e) { nodeCheckCode = e.status ?? -1 }
+  must(nodeCheckCode === 0,
+    'node --check now REJECTS the broken fixture, so this case no longer pins why PARSES compiles ' +
+    'the source itself; re-read the PARSES comment in preflight_launch.mjs before simplifying it')
+  check('brokenSyntax',
+    runPreflight({ driver: brokenPath, ledgerDir: green.dir, workbench: green.url }),
+    1, ['PARSES'])
+
+  // A fill marker replaced with a bare word where a quoted string was meant. It compiles, it hashes
+  // clean, it has no angle brackets left — and it throws ReferenceError the first time a prompt
+  // interpolates TARGET, which is round 1.
+  const unbound = tamperOneLine(fillTemplate(green.dir),
+    "const TARGET = 'selfcheck-fixture'",
+    'const TARGET = selfcheckFixtureTarget',
+    'Config (bare word where a string was meant)')
+  check('unboundName',
+    runPreflight({ driver: writeDriver('driver-unbound', unbound), ledgerDir: green.dir, workbench: green.url }),
+    1, ['PARSES'])
 
   // -- BRIEF family: their own live ledgers, so LIVE stays green and BRIEF fires alone -----------
   const noBriefLedger = await makeLedger('no-brief', { brief: null })

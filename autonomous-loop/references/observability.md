@@ -107,13 +107,13 @@ success. `SKILL.md` invariant 8 states the witness half.
 
 **Both are decided by a terminal AUDIT, not by the ledger agent.** One cheap `TIER.mechanical` agent
 runs after the last round and before the status is computed; it reads `LEDGER_DIR` and returns three
-scalars (`AUDIT_SCHEMA`): `hero`, `handoff`, `handoffRound`. The agent that skipped `HANDOFF.md` used
+scalars (`AUDIT_SCHEMA`): `hero`, `handoff`, `handoffRound`, `captures`. The agent that skipped `HANDOFF.md` used
 to be the one asked whether it wrote `HANDOFF.md` — guardrail #1 (worker ≠ verifier) broken inside the
 kernel, in the two rungs that exist to catch a run reporting well and showing nothing.
 
 | Gate | True when the audit returns | Demotes to |
 |---|---|---|
-| `witnessed` | `hero` is `artifact` **or** `none` | `unwitnessed` |
+| `witnessed` | `hero` is `artifact`, **or** `none` with `captures === 0` | `unwitnessed` |
 | `documented` | `handoff` is `complete` **and** `handoffRound === state.round` | `undocumented` |
 
 The documentation gate is the narrower one deliberately: there is no honest "a handoff is impossible
@@ -131,7 +131,10 @@ truthfully either way: the gate demotes the **status**, not the count.
 
 **Proof** — scenarios in `selfcheck_loops.mjs`: `heroAbsent` (verified 3 atoms, showed nothing)
 expects `unwitnessed` with `confirmed === 3`; `heroNone` (said so out loud) converges;
-`handoffAbsent` expects `undocumented` with the witness rung satisfied; `bothMissing` ranks
+`heroNoneWithGallery` (said so out loud with four frames on disk) demotes, and `heroNoneNoGallery`
+keeps the honest half converging; `auditNoCaptures` (an otherwise-perfect audit missing the new
+scalar) is unreadable and fails closed; `handoffAbsent` expects `undocumented` with the witness rung
+satisfied; `bothMissing` ranks
 `unwitnessed` above; `deadLedger` fails closed; `staleHandoff` (written in round 1, skipped in round
 2) is `undocumented`; `deadAuditor` demotes; `staleAudit` (a complete handoff naming the round before
 last) demotes; `lyingLedger` (the writer says `written`, the audit finds nothing) demotes and the
@@ -144,9 +147,9 @@ finishes `unwitnessed` while the file on disk looks answered. The audit reads th
 the one place it is told a rule rather than left to look: a note still beginning "No capture yet." is
 the seed, and it answers `absent`. Triage tells the two apart by the same wording.
 
-**KNOWN LIMIT — the witness gate checks that the note EXISTS, never that it is TRUE.** `hero.type="none"`
-plus a non-empty note converges, and nothing compares that note against the directory it is a claim
-about. Measured, on a run whose whole purpose was improving this board: the ledger agent wrote
+**The lying hero, and why the gate now counts the directory.** For a while `hero.type="none"` plus a
+non-empty note converged on its own word, and nothing compared that note against the directory it was
+a claim about. Measured, on a run whose whole purpose was improving this board: the ledger agent wrote
 
 > *"Chrome not available in this environment; capture.sh requires /Applications/Google Chrome.app …
 > headless screenshot capability is required to generate r5-board.png."*
@@ -157,17 +160,29 @@ every round. The agent did not look; it composed a plausible reason for an absen
 exist, and the board rendered it as the run's headline evidence — the amber "no visual evidence"
 panel sitting directly on top of a full gallery.
 
-The gate would have accepted it. `witnessed` is satisfied by `none`-with-a-note exactly as it is by a
-real capture, which is deliberate — a loop is allowed to be unable to produce a picture. What is not
-deliberate is that the escape hatch is unfalsifiable: this is the same defect as counting an
-unverified atom, one rung up, and it is being reported by the gate that exists to catch runs which
-report well and show nothing.
+The gate accepted it. `witnessed` was satisfied by `none`-with-a-note exactly as by a real capture,
+which is deliberate — a loop is allowed to be unable to produce a picture. What was not deliberate is
+that the escape hatch was unfalsifiable: the same defect as counting an unverified atom, one rung up,
+inside the gate that exists to catch runs which report well and show nothing.
 
-The fix is cheap and not yet made: the terminal audit already opens `LEDGER_DIR`, so it can answer a
-fourth scalar — whether `artifacts/` holds any round capture — and a `none` returned beside a
-non-empty capture set is a **lying hero**, demoted exactly like `lyingLedger` already demotes a
-handoff the auditor cannot find. Until then, read a `none` note as a claim, not as a finding, and
-check the gallery yourself. Triage row below.
+The terminal audit already opens `LEDGER_DIR`, so it now answers a fourth scalar — **`captures`**, how
+many image files sit in `artifacts/` — and `witnessed` reads:
+
+```js
+audit.hero === 'artifact' || (audit.hero === 'none' && audit.captures === 0)
+```
+
+A `none` returned beside a non-empty gallery is a **lying hero** and demotes to `unwitnessed`, exactly
+as `lyingLedger` demotes a handoff the auditor cannot find. `captures` is asked as its own question
+for the same reason the audit exists at all: `hero` is what the board points at, `captures` is what
+the run produced, and the two disagreeing is the finding. It is required by `AUDIT_SCHEMA` and by
+`usableAudit`, so an audit that omits it is unreadable and both gates fail closed.
+
+Note what the rung does **not** do: it never promotes. A full gallery with `hero.type="none"` is
+demoted, not quietly upgraded on the gallery's behalf — the gate is about what the board *leads with*,
+and a frame nobody points at is a frame nobody sees. `scripts/selfcheck_loops.mjs` holds the three
+cases (`heroNoneWithGallery`, `heroNoneNoGallery`, `auditNoCaptures`); the middle one is what keeps
+the fix from collapsing into "stop believing `none`", which would punish a genuinely non-visual loop.
 
 ## `activity.jsonl` — the round in flight
 

@@ -10,13 +10,15 @@
 // the skill's Step 5 ("stand up observability, give the user the URL") could not stop them,
 // because a step is something you can skip and a gate is not.
 //
-// So the four things the skill PROMISES are checked here as facts on disk and on the wire:
+// So the five things the skill PROMISES are checked here as facts on disk, in the source, and on
+// the wire:
 //
 //   BRIEF     the run was elicited from a human, not assumed — the intake questions are answered
 //   DESCENT   the driver IS the kernel, byte-for-byte, not a script that resembles it — and the two
 //             paths the kernel writes through (LEDGER, HANDOFF) are still derived from LEDGER_DIR,
 //             which no region hash can cover because Config sits above every region
 //   FILLED    no <<PLACEHOLDER>> survived into a runnable driver
+//   PARSES    the driver compiles, and every name it reads is a name something defines
 //   LIVE      a workbench is serving THIS ledger dir right now, proven by fetching from it
 //
 // Usage:
@@ -96,6 +98,141 @@ function region(src, startPrefix, endPrefix, label, where) {
   const body = rest.slice(0, rel).map(l => l.replace(/\s+$/, '')).filter(l => l.length > 0)
   if (body.length === 0) return { err: `region '${label}' is empty in ${where}` }
   return { hash: createHash('sha256').update(body.join('\n')).digest('hex').slice(0, 16), lines: body.length }
+}
+
+// ---- free names: identifiers the driver reads that nothing in it binds ---------------------
+// Everything a driver may legitimately reach for without declaring it: the Workflow runtime's own
+// surface, and the language's. A name outside this set and bound nowhere in the file is a
+// ReferenceError waiting for its line to run. Keep this list conservative — a missing entry here
+// reads as a defect in the driver, which is the wrong direction for a gate to be wrong in.
+const AMBIENT = new Set([
+  // the Workflow runtime hands these to every script; see the Workflow tool's script contract
+  'agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow',
+  // language + host builtins
+  'Object', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt', 'Math', 'JSON', 'Date',
+  'RegExp', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Proxy', 'Reflect', 'Error', 'TypeError',
+  'RangeError', 'SyntaxError', 'ReferenceError', 'Infinity', 'NaN', 'undefined', 'globalThis',
+  'console', 'structuredClone', 'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'Intl',
+  'encodeURIComponent', 'decodeURIComponent', 'AbortSignal', 'fetch', 'URL',
+  // keywords and contextual keywords, which the identifier pattern below cannot tell from names
+  'null', 'true', 'false', 'this', 'arguments', 'new', 'typeof', 'void', 'delete', 'in', 'of',
+  'instanceof', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break',
+  'continue', 'throw', 'try', 'catch', 'finally', 'function', 'class', 'const', 'let', 'var',
+  'await', 'async', 'yield', 'export', 'import', 'extends', 'super', 'get', 'set', 'static',
+  'from', 'as', 'with', 'debugger',
+])
+
+const IDENT = '[A-Za-z_$][A-Za-z0-9_$]*'
+
+// Reduce source to the parts that are CODE. Comments go; the text of string literals goes; but the
+// interior of every `${...}` stays and is reduced the same way, because this driver is mostly prompt
+// templates and a name that only ever appears inside one is still a name the run will read.
+function codeOnly(src) {
+  let out = ''
+  let i = 0
+  const n = src.length
+  while (i < n) {
+    const c = src[i]
+    if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i++; continue }
+    if (c === '/' && src[i + 1] === '*') { i += 2; while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue }
+    if (c === '/') {
+      // Regex literal, or division? Decide by what came before: after a value `/` divides, after an
+      // operator or a keyword it opens a regex. Getting this wrong turns a flag letter into a bare
+      // identifier — `/\s+/g` reported `g` as an unbound name until this branch existed.
+      const prev = out.replace(/\s+$/, '').slice(-1)
+      const prevWord = (out.match(new RegExp(`(${IDENT})\\s*$`)) || [])[1]
+      const opens = prev === '' || '(,=:[!&|?{};+-*%~^<>'.includes(prev) ||
+        ['return', 'typeof', 'case', 'in', 'of', 'do', 'else', 'yield', 'await'].includes(prevWord)
+      if (opens) {
+        i++
+        let inClass = false
+        while (i < n) {
+          if (src[i] === '\\') { i += 2; continue }
+          if (src[i] === '[') inClass = true
+          else if (src[i] === ']') inClass = false
+          else if (src[i] === '/' && !inClass) { i++; break }
+          else if (src[i] === '\n') break
+          i++
+        }
+        while (i < n && /[a-z]/.test(src[i])) i++      // flags
+        out += ' "" '; continue
+      }
+    }
+    if (c === "'" || c === '"') {
+      const q = c; i++
+      while (i < n && src[i] !== q) { if (src[i] === '\\') i++; i++ }
+      i++; out += ' "" '; continue
+    }
+    if (c === '`') {
+      i++
+      while (i < n) {
+        if (src[i] === '\\') { i += 2; continue }
+        if (src[i] === '`') { i++; break }
+        if (src[i] === '$' && src[i + 1] === '{') {
+          i += 2
+          const start = i
+          let depth = 1
+          while (i < n && depth > 0) {
+            if (src[i] === '{') depth++
+            else if (src[i] === '}') depth--
+            else if (src[i] === '`') { i++; while (i < n && src[i] !== '`') { if (src[i] === '\\') i++; i++ } }
+            i++
+          }
+          out += ' ( ' + codeOnly(src.slice(start, i - 1)) + ' ) '
+          continue
+        }
+        i++
+      }
+      out += ' "" '; continue
+    }
+    out += c; i++
+  }
+  return out
+}
+
+// Every name the file BINDS anywhere, by any means. Generous on purpose: this set is subtracted from
+// the used names, so over-collecting here costs coverage while under-collecting invents failures.
+function boundNames(code) {
+  const bound = new Set()
+  const addAll = (s) => { for (const m of s.matchAll(new RegExp(IDENT, 'g'))) bound.add(m[0]) }
+
+  // const/let/var: everything up to the initialiser or the end of the statement, so destructuring
+  // patterns (`const { a, b } = x`, `const [x] = y`) are collected whole.
+  for (const m of code.matchAll(/\b(?:const|let|var)\s+/g)) {
+    let i = m.index + m[0].length, depth = 0, buf = ''
+    while (i < code.length) {
+      const c = code[i]
+      if ('([{'.includes(c)) depth++
+      else if (')]}'.includes(c)) { if (depth === 0) break; depth-- }
+      else if (depth === 0 && ((c === '=' && code[i + 1] !== '=') || c === ';' || c === '\n')) break
+      buf += c; i++
+    }
+    addAll(buf)
+  }
+  for (const m of code.matchAll(new RegExp(`\\bfunction\\s*\\*?\\s*(${IDENT})?\\s*\\(([^)]*)\\)`, 'g'))) {
+    if (m[1]) bound.add(m[1]); addAll(m[2] || '')
+  }
+  for (const m of code.matchAll(new RegExp(`\\bclass\\s+(${IDENT})`, 'g'))) bound.add(m[1])
+  for (const m of code.matchAll(new RegExp(`\\bcatch\\s*\\(\\s*(${IDENT})`, 'g'))) bound.add(m[1])
+  for (const m of code.matchAll(/\(([^()]*)\)\s*=>/g)) addAll(m[1])            // (a, b) =>
+  for (const m of code.matchAll(new RegExp(`(${IDENT})\\s*=>`, 'g'))) bound.add(m[1])   // x =>
+  for (const m of code.matchAll(new RegExp(`(${IDENT})\\s*\\(([^()]*)\\)\\s*\\{`, 'g'))) {
+    bound.add(m[1]); addAll(m[2])                                             // method shorthand
+  }
+  return bound
+}
+
+function freeNames(src) {
+  const code = codeOnly(src)
+  const bound = boundNames(code)
+  const free = new Set()
+  for (const m of code.matchAll(new RegExp(`(\\.\\s*)?\\b(${IDENT})\\b(\\s*:)?`, 'g'))) {
+    if (m[1]) continue                                   // property access: obj.name
+    if (m[3]) continue                                   // object key, or a label
+    const name = m[2]
+    if (!bound.has(name) && !AMBIENT.has(name)) free.add(name)
+  }
+  return [...free].sort()
 }
 
 // ---- SELFCHECK: the stop logic is code, so it is tested as code ---------------------------
@@ -184,6 +321,54 @@ if (driverSrc !== null) {
     fail('FILLED', `unfilled placeholders remain: ${placeholders.join(', ')}. Each is a knob the run ` +
       `divides on; an unfilled one either crashes at startup or, worse, reads as a number and disarms a predicate.`)
   }
+
+  // ---- PARSES: the driver runs for a second before it runs for a day ------------------------
+  // MEASURED: a driver passed all five gates above and then died 24 ms into round 1 on
+  // `question is not defined`. Every gate here had been honest — the kernel was byte-identical, the
+  // brief was answered, the workbench was live — and none of them had opened the file as CODE. The
+  // operator got a green launch gate, a workbench URL, and a run that was over before they finished
+  // reading the URL. Four hours of budget were reserved for a script that could never execute one line.
+  //
+  // NOT `node --check`, which is the obvious thing and does not work: the driver opens with
+  // `export const meta`, and given module syntax Node's checker takes a path that returned exit 0 on
+  // a driver with a deliberate unbalanced paren in Config. Measured, which is why this compiles the
+  // source itself instead. Compiling is not running — the AsyncFunction constructor parses the body
+  // and hands back a function nobody calls, so no agent is spawned and no token is spent.
+  const stripExport = (s) => s.replace(/^export\s+(?=(?:const|let|var|function|class|async|\{))/gm, '')
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  let compiles = false
+  try {
+    new AsyncFunction(stripExport(driverSrc))
+    compiles = true
+  } catch (e) {
+    fail('PARSES', `the driver does not compile: ${e.message}. It would die in the first milliseconds ` +
+      `of round 1, after this gate had already told the operator the run was good to launch.`)
+  }
+
+  // The other half, and the one that catches the recorded failure: a name the driver READS that
+  // nothing in the driver DEFINES. Compiling cannot see it — an unbound identifier is legal source
+  // and a ReferenceError at the moment of use — and "the moment of use" is routinely inside a prompt
+  // template, which means round 1, which means the whole run. The commonest way to produce one is a
+  // fill marker replaced with a bare word instead of a quoted string: `<<TARGET>>` filled as
+  // `question` rather than `'question'` reads as an identifier and passes FILLED cleanly.
+  //
+  // The claim is deliberately narrow, so it can be made without a JS parser and still be trusted: a
+  // name is reported only if it is used somewhere and bound NOWHERE in the whole file. That misses a
+  // name bound in one scope and read in another — a real defect this gate does not catch, stated
+  // plainly rather than implied away — and in exchange it does not invent failures, which matters
+  // more: a launch gate that cries wolf gets deleted. Measured at zero reports against the filled
+  // template, against a driver with the export stripped, against a hand-rolled script, and against
+  // this project's own board driver; and at one report for the bare-word fill in Config, the same
+  // name inside a `${...}` prompt interpolation, and a call to an undefined helper.
+  if (compiles) {
+    const unknown = freeNames(driverSrc)
+    if (unknown.length > 0) {
+      fail('PARSES', `the driver reads ${unknown.length === 1 ? 'a name' : 'names'} nothing defines: ` +
+        `${unknown.join(', ')}. Either it is a typo, or a fill marker was replaced with a bare word ` +
+        `where a quoted string was meant (\`const TARGET = question\`, not \`const TARGET = 'question'\`). ` +
+        `Reading it throws ReferenceError at the moment the line runs — usually inside a round-1 prompt.`)
+    }
+  }
 }
 
 // ---- BRIEF: proof the run was elicited, not assumed ---------------------------------------
@@ -254,7 +439,7 @@ if (ok) {
     driver: driverPath,
     ledgerDir,
     workbench,
-    gates: ['SELFCHECK', 'DESCENT', 'FILLED', 'BRIEF', 'LIVE'],
+    gates: ['SELFCHECK', 'DESCENT', 'FILLED', 'PARSES', 'BRIEF', 'LIVE'],
     // No timestamp: this file is a record of WHAT passed, and the run's own ledger carries when.
   }
   writeFileSync(join(ledgerDir, 'PREFLIGHT.json'), JSON.stringify(receipt, null, 2) + '\n')
