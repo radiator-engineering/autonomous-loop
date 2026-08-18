@@ -1,0 +1,14 @@
+CONTRIBUTING.md
+  h_8d030b808895cd 23,31-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "7cf5d647144834ee7d7022246f7794ba2c2e0be6",
+  "prompts": {},
+  "humans": {
+    "h_8d030b808895cd": {
+      "author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
