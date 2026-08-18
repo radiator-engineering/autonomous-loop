@@ -1,0 +1,14 @@
+README.md
+  h_2e249d121a4557 49,57-68,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "13a80d7a2be36c55c21af3b2764d58e92a9bea04",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
