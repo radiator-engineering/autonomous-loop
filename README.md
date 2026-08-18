@@ -46,13 +46,25 @@ a long unattended run honest lives in one shared kernel:
 
 ## Install
 
-From this repo, into every Claude home on the machine:
+From this repo, into `~/.claude`:
 
 ```sh
 ./install.sh
 ```
 
 The install is fail-closed. If any gate exits non-zero, nothing is copied.
+
+If you keep more than one Claude home — separate profiles, a work config dir — name them and the
+install goes to each:
+
+```sh
+./install.sh --home ~/.claude --home ~/.claude-work
+CLAUDE_HOMES=~/.claude:~/.claude-work ./install.sh    # same thing, colon-separated
+```
+
+With neither given, `install.sh` uses `CLAUDE_CONFIG_DIR` if it is set, and `~/.claude` otherwise.
+A named home that does not exist is skipped rather than created, and an install that reaches no
+home at all fails instead of reporting success.
 
 To install somewhere else, or on another machine, unzip the packaged skill instead. It is a plain
 zip with a single top-level `autonomous-loop/` folder:
@@ -115,7 +127,7 @@ the benchmark says so.
 ./install.sh --check          # run the source gates, change nothing
 ./install.sh --check-bundles  # gate the .skill bundles on disk, change nothing
 ./install.sh --pack           # gate, repack the bundles, install nothing
-./install.sh                  # gate, back up, install to every Claude home, repack
+./install.sh                  # gate, back up, install (see Install for --home), repack
 ```
 
 `--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
