@@ -1,0 +1,14 @@
+README.md
+  h_8d030b808895cd 152-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "571f3f96ec7166c2c2b239ea540e86410a6aabe7",
+  "prompts": {},
+  "humans": {
+    "h_8d030b808895cd": {
+      "author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
