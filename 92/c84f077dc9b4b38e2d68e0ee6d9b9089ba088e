@@ -1,0 +1,22 @@
+install.sh
+  h_2e249d121a4557 22,89-94,126,283,291,302,351
+README.md
+  h_2e249d121a4557 49,57-68,130
+autonomous-loop-workspace/iteration-1/benchmark.json
+  h_2e249d121a4557 4
+autonomous-loop-workspace/iteration-1/eval-2-exhauster-migration/with_skill/outputs/response.md
+  h_2e249d121a4557 11,136,176,190
+autonomous-loop-workspace/iteration-1/eval-3-saturator-pii/with_skill/outputs/response.md
+  h_2e249d121a4557 174,226,252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "92c84f077dc9b4b38e2d68e0ee6d9b9089ba088e",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
