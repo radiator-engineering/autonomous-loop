@@ -1,0 +1,14 @@
+install.sh
+  h_2e249d121a4557 253-258,274-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e15e0dc66d7a0763e90be9b56798f129675cbffa",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
