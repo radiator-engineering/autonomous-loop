@@ -1,0 +1,14 @@
+.github/workflows/gates.yml
+  h_2e249d121a4557 15,17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3da08bc593ba7a77b1e62ae29cdef802d0928e44",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
