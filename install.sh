@@ -244,36 +244,55 @@ if [ "$MODE" = "--check-bundles" ]; then
   exit 0
 fi
 
-# ---- 3. Back up the current installs --------------------------------------------------------
+# ---- 3. Decide the targets, then back up what is there ---------------------------------------
 if [ "$MODE" != "--pack" ]; then
+  # Which homes exist is settled ONCE, here, before anything is created. Deciding it per home
+  # inside the install loop looked equivalent and was not: with --home /x --home /x/skills, the
+  # first home's mkdir creates /x/skills, and the second home then passes an existence check it
+  # failed a moment earlier. A home is a target only if it existed before this script touched
+  # anything.
+  say "== targets =="
+  TARGETS=()
+  for home in "${HOMES[@]}"; do
+    if [ -d "$home" ]; then
+      TARGETS+=("$home")
+      say "  OK    $home"
+    else
+      # A home that does not exist is a typo, not a profile to create: making ~/.clade/skills/
+      # would look like a clean install and put the skill where Claude Code never reads.
+      say "  SKIP  $home (no such directory)"
+    fi
+  done
+  [ "${#TARGETS[@]}" -gt 0 ] || die "no Claude home to install into (tried: ${HOMES[*]}) — pass --home DIR"
+
   STAMP="$(date +%Y%m%d-%H%M%S)"
   BACKUP="$SRC/.install-backup/$STAMP"
   say "== backup -> $BACKUP =="
-  for home in "${HOMES[@]}"; do
-    # Key the backup by the whole path, not by basename: two homes named .claude under different
-    # parents would otherwise overwrite each other's backup. Escaping _ before folding / into _
-    # keeps the encoding reversible, so /a_b/.claude and /a/b/.claude stay distinct instead of both
-    # landing on a_b_.claude, and the leading separator is kept so a relative home cannot collide
-    # with the absolute one of the same name.
-    slot="${home//_/__}"; slot="${slot//\//_}"
+  : >"$WORK/manifest"
+  for i in "${!TARGETS[@]}"; do
+    home="${TARGETS[$i]}"
+    # Slot by index, and record the path in MANIFEST. Every scheme that folds "/" into a filename
+    # character has a collision — basename loses the parent, and escaping _ before folding / into _
+    # still maps both a_/b and a/_b onto a___b. An index cannot collide with itself, so the naming
+    # stops trying to be clever and the manifest carries the meaning.
+    slot="$i-$(basename "$home")"
+    mkdir -p "$BACKUP/$slot/skills"
+    printf '%s\t%s\n' "$slot" "$home" >>"$WORK/manifest"
     for s in "${SKILLS[@]}"; do
       [ -d "$home/skills/$s" ] || continue
-      mkdir -p "$BACKUP/$slot/skills"
       cp -R "$home/skills/$s" "$BACKUP/$slot/skills/$s"
     done
   done
-  say "  backed up (restore by copying these back)"
+  cp "$WORK/manifest" "$BACKUP/MANIFEST"
+  say "  backed up (MANIFEST maps each slot to its home; restore by copying these back)"
 
   # ---- 4. Install ---------------------------------------------------------------------------
   say "== install =="
   installed=0
-  for home in "${HOMES[@]}"; do
-    # A home that does not exist is a typo, not a profile to create: making ~/.clade/skills/ would
-    # look like a clean install and put the skill somewhere Claude Code never reads.
-    [ -d "$home" ] || { say "  SKIP  $home (no such directory)"; continue; }
-    # mkdir without -p on purpose. -p would recreate the home itself if it vanished between the
-    # check above and this line, which is the one thing this block promises not to do; plain mkdir
-    # fails on a missing parent instead.
+  for home in "${TARGETS[@]}"; do
+    # mkdir without -p on purpose. -p would recreate the home itself if it vanished since the
+    # targets were chosen, which is the one thing this block promises not to do; plain mkdir fails
+    # on a missing parent instead.
     [ -d "$home/skills" ] || mkdir "$home/skills"
     for s in "${SKILLS[@]}"; do
       rm -rf "$home/skills/$s"
@@ -283,7 +302,6 @@ if [ "$MODE" != "--pack" ]; then
       installed=$((installed + 1))
     done
   done
-  [ "$installed" -gt 0 ] || die "no Claude home to install into (tried: ${HOMES[*]}) — pass --home DIR"
 fi
 
 # ---- 5. Repack the bundles ------------------------------------------------------------------
@@ -311,8 +329,7 @@ say "  autonomous-loop-share.zip"
 # ---- 6. Verify what actually landed ---------------------------------------------------------
 say "== verify =="
 if [ "$MODE" != "--pack" ]; then
-  for home in "${HOMES[@]}"; do
-    [ -d "$home/skills/${SKILLS[0]}" ] || continue
+  for home in "${TARGETS[@]}"; do
     for s in "${SKILLS[@]}"; do
       out="$(diff -rq "$STAGE/$s" "$home/skills/$s" 2>&1 || true)"
       [ -z "$out" ] && say "  OK    $home/skills/$s" || { say "  DRIFT $home/skills/$s"; echo "$out" | sed 's/^/        /'; bad=1; }
