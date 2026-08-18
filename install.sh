@@ -19,6 +19,7 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF="$SRC/$(basename "${BASH_SOURCE[0]}")"
 SKILLS=(autonomous-loop)
 # Present in source, never installed and never packaged. __pycache__ is here because importing
 # scripts/workbench_server.py once — to unit-test one helper — left a .pyc in the skill, and the next
@@ -85,6 +86,12 @@ for i in "${!HOMES[@]}"; do
   case "${HOMES[$i]}" in "~/"*) HOMES[$i]="$HOME/${HOMES[$i]#\~/}" ;; "~") HOMES[$i]="$HOME" ;; esac
 done
 
+# Everything below shells out to these. Say which one is missing now, rather than failing halfway
+# through a repack with a bare "command not found".
+for t in node tar zip unzip diff cmp; do
+  command -v "$t" >/dev/null 2>&1 || die "required tool not on PATH: $t"
+done
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -116,7 +123,7 @@ for s in "${SKILLS[@]}"; do
   for h in "$SRC/$s/scripts/"selfcheck_*.mjs; do
     [ -e "$h" ] || continue
     b="$(basename "$h")"
-    if grep -q "run_gate $s *$b\$" "$SRC/install.sh"; then
+    if grep -q "run_gate $s *$b\$" "$SELF"; then
       :
     else
       say "  FAIL  $s/scripts/$b exists but no run_gate line invokes it"
@@ -243,25 +250,34 @@ if [ "$MODE" != "--pack" ]; then
   BACKUP="$SRC/.install-backup/$STAMP"
   say "== backup -> $BACKUP =="
   for home in "${HOMES[@]}"; do
+    # Key the backup by the full path with separators flattened, not by basename: two homes named
+    # .claude under different parents would otherwise overwrite each other's backup.
+    slot="${home#/}"; slot="${slot//\//_}"
     for s in "${SKILLS[@]}"; do
       [ -d "$home/skills/$s" ] || continue
-      mkdir -p "$BACKUP/$(basename "$home")/skills"
-      cp -R "$home/skills/$s" "$BACKUP/$(basename "$home")/skills/$s"
+      mkdir -p "$BACKUP/$slot/skills"
+      cp -R "$home/skills/$s" "$BACKUP/$slot/skills/$s"
     done
   done
   say "  backed up (restore by copying these back)"
 
   # ---- 4. Install ---------------------------------------------------------------------------
   say "== install =="
+  installed=0
   for home in "${HOMES[@]}"; do
-    [ -d "$home/skills" ] || { say "  SKIP  $home/skills (absent)"; continue; }
+    # A home that does not exist is a typo, not a profile to create: making ~/.clade/skills/ would
+    # look like a clean install and put the skill somewhere Claude Code never reads.
+    [ -d "$home" ] || { say "  SKIP  $home (no such directory)"; continue; }
+    mkdir -p "$home/skills"
     for s in "${SKILLS[@]}"; do
       rm -rf "$home/skills/$s"
       mkdir -p "$home/skills/$s"
       tar -cf - -C "$SRC/$s" "${EXCLUDES[@]}" . | tar -xf - -C "$home/skills/$s"
       say "  $home/skills/$s"
+      installed=$((installed + 1))
     done
   done
+  [ "$installed" -gt 0 ] || die "no Claude home to install into (tried: ${HOMES[*]}) — pass --home DIR"
 fi
 
 # ---- 5. Repack the bundles ------------------------------------------------------------------
@@ -290,7 +306,7 @@ say "  autonomous-loop-share.zip"
 say "== verify =="
 if [ "$MODE" != "--pack" ]; then
   for home in "${HOMES[@]}"; do
-    [ -d "$home/skills" ] || continue
+    [ -d "$home/skills/${SKILLS[0]}" ] || continue
     for s in "${SKILLS[@]}"; do
       out="$(diff -rq "$STAGE/$s" "$home/skills/$s" 2>&1 || true)"
       [ -z "$out" ] && say "  OK    $home/skills/$s" || { say "  DRIFT $home/skills/$s"; echo "$out" | sed 's/^/        /'; bad=1; }
@@ -309,5 +325,5 @@ gate_bundles
 if [ "$MODE" = "--pack" ]; then
   say "== done: bundles repacked and gated, nothing installed =="
 else
-  say "== done: ${#HOMES[@]} homes, ${#SKILLS[@]} skill, 1 bundle, 1 share zip =="
+  say "== done: $installed skill install(s), 1 bundle, 1 share zip =="
 fi
