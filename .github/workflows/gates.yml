@@ -1,0 +1,34 @@
+# The gates this repo ships are only worth what they catch, and until now nothing ran them except
+# whoever remembered to run install.sh before pushing. That is the same defect install.sh refuses
+# one level down: a harness nothing invokes is a document.
+name: gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Source gates
+        run: ./install.sh --check
+
+      - name: Bundle gates
+        # The share zip is build output and is not tracked, so it has to exist before the bundle
+        # gate can grade it. --pack builds it — and rebuilds dist/autonomous-loop.skill, which IS
+        # tracked and is the thing under test. Put the committed bundle back before grading, or
+        # this step would only ever prove that a bundle built ten seconds ago matches source, and
+        # a stale committed bundle would sail through.
+        run: |
+          cp autonomous-loop/dist/autonomous-loop.skill "$RUNNER_TEMP/committed.skill"
+          ./install.sh --pack
+          cp "$RUNNER_TEMP/committed.skill" autonomous-loop/dist/autonomous-loop.skill
+          ./install.sh --check-bundles
