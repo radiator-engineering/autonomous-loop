@@ -27,9 +27,27 @@ SKILLS=(autonomous-loop)
 EXCLUDES=(--exclude=evals --exclude=dist --exclude=.DS_Store --exclude=__pycache__ --exclude='*.pyc')
 SHARE="$SRC/autonomous-loop-share.zip"
 
-usage() {
-  printf 'usage: %s [--check|--pack|--check-bundles] [--home DIR ...]\n' "$(basename "$0")" >&2
-  exit 2
+say() { printf '%s\n' "$*"; }
+die() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
+
+# Asked-for help is not a failure: it prints on stdout and exits 0, so a wrapper can pipe it. A
+# parse error prints the same line on stderr and exits 2. The text is identical; the exit status is
+# the only thing that tells the two apart from outside.
+usage() {  # [exit status, default 2]
+  local status="${1:-2}"
+  if [ "$status" -eq 0 ]; then
+    printf 'usage: %s [--check|--pack|--check-bundles] [--home DIR ...]\n' "$(basename "$0")"
+  else
+    printf 'usage: %s [--check|--pack|--check-bundles] [--home DIR ...]\n' "$(basename "$0")" >&2
+  fi
+  exit "$status"
+}
+# An empty --home is refused rather than skipped. "" would build "/skills/autonomous-loop", and the
+# install rm -rf's that path before it writes: an unlucky empty variable in a caller's script is not
+# something to answer with a delete at the filesystem root.
+add_home() {
+  [ -n "$1" ] || { printf 'install.sh: --home needs a directory, got an empty value\n' >&2; usage; }
+  HOMES+=("$1")
 }
 
 MODE=all
@@ -37,9 +55,9 @@ HOMES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --check|--pack|--check-bundles) MODE="$1"; shift ;;
-    --home) [ $# -ge 2 ] || usage; HOMES+=("$2"); shift 2 ;;
-    --home=*) HOMES+=("${1#--home=}"); shift ;;
-    -h|--help) usage ;;
+    --home) [ $# -ge 2 ] || usage; add_home "$2"; shift 2 ;;
+    --home=*) add_home "${1#--home=}"; shift ;;
+    -h|--help) usage 0 ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; usage ;;
   esac
 done
@@ -52,6 +70,10 @@ if [ "${#HOMES[@]}" -eq 0 ]; then
     for h in "${_split[@]}"; do
       if [ -n "$h" ]; then HOMES+=("$h"); fi
     done
+    # Set but holding nothing usable — ":" or "::" — is a misconfiguration, not a request to
+    # install nowhere. Left alone it would run every gate, repack both bundles, and exit 0 having
+    # installed nothing, which in CI reads exactly like a successful install.
+    [ "${#HOMES[@]}" -gt 0 ] || die "CLAUDE_HOMES is set but names no path"
   elif [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
     HOMES+=("$CLAUDE_CONFIG_DIR")
   else
@@ -62,9 +84,6 @@ fi
 for i in "${!HOMES[@]}"; do
   case "${HOMES[$i]}" in "~/"*) HOMES[$i]="$HOME/${HOMES[$i]#\~/}" ;; "~") HOMES[$i]="$HOME" ;; esac
 done
-
-say() { printf '%s\n' "$*"; }
-die() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
