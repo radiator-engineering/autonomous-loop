@@ -101,6 +101,10 @@ The whole gap is routing. The sharpest case is the saturator eval, where the bas
 unknown-size search as an enumerable queue and scored 2/5 against the skill's 5/5 — exactly the
 exhauster-versus-saturator call the router names as most decisive.
 
+The transcripts under `autonomous-loop-workspace/` are kept as they were produced. Some of them
+name a `gauntlet-loop` skill: a private predecessor converger this skill absorbed and replaced. It
+is not part of this repo, and nothing here depends on it.
+
 The decidability gate — refusing a loop aimed at something you cannot measure — did not
 discriminate at this model tier. Both configurations scored full marks on both decidability evals.
 The gate guards against regressions and helps weaker tiers, but it is not measured lift here, and

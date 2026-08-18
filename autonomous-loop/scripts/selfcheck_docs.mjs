@@ -46,7 +46,7 @@ const SOURCES = {
   'selfcheck_loops.mjs': join(SKILL, 'scripts', 'selfcheck_loops.mjs'),
   'selfcheck_preflight.mjs': join(SKILL, 'scripts', 'selfcheck_preflight.mjs'),
   'selfcheck_docs.mjs': join(SKILL, 'scripts', 'selfcheck_docs.mjs'),
-  // Absorbed from the gauntlet-loop skill when this skill superseded it. They join the list for the
+  // Absorbed from the predecessor converger skill this one superseded. They join the list for the
   // same reason the rest are on it: a file the prose cites is a file whose line numbers will drift.
   'gen_partition.py': join(SKILL, 'scripts', 'gen_partition.py'),
   'lock_prompts.py': join(SKILL, 'scripts', 'lock_prompts.py'),
@@ -79,12 +79,12 @@ const PATH_CITE = /`((?:references|scripts|assets)\/[A-Za-z0-9_.-]+)`/g
 // This skill cites NO other skill, so a cited path either exists here or is broken. There is no
 // third answer, and that is a deliberate tightening rather than a simplification.
 //
-// It used to have one. A citation naming another skill in words — "the gauntlet-loop skill's
-// `references/failure-modes.md`" — was resolved against every root this skill might be installed
-// under, and when the named skill was not installed anywhere the check returned 'unverifiable' and
-// said nothing, on the reasoning that a gate which cries wolf gets switched off.
+// It used to have one. A citation naming another skill in words — "the predecessor converger
+// skill's `references/failure-modes.md`" — was resolved against every root this skill might be
+// installed under, and when the named skill was not installed anywhere the check returned
+// 'unverifiable' and said nothing, on the reasoning that a gate which cries wolf gets switched off.
 //
-// That branch was measured, and it is why this code is gone. Running this gate with gauntlet-loop
+// That branch was measured, and it is why this code is gone. Running this gate with that skill
 // deleted from the machine produced the IDENTICAL green board — "Every citation in this skill
 // resolves" — while four real citations went unchecked. The escape hatch made retiring a cited
 // skill invisible to the one check whose job is to notice. Absorbing those four files removed the

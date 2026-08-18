@@ -423,7 +423,7 @@ const MODES = {
     // fall going unrecorded, leaving the run to report its LAST number as though it were its best. The
     // high-water mark and the round that set it are kept here, in the driver, from counted atoms.
     //
-    // Deliberately NOT wired to the stop predicate. gauntlet's converger plateaued on
+    // Deliberately NOT wired to the stop predicate. The predecessor converger plateaued on
     // `composite <= best + EPS`; this kernel plateaus on `dry` — rounds that confirmed no NEW atom —
     // which is the stronger test, because a run can climb the composite by re-confirming atoms it had
     // already counted and a delta-based plateau would read that as progress. Two mechanisms for one
