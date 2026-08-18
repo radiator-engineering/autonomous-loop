@@ -1,0 +1,26 @@
+LICENSE
+  h_2e249d121a4557 1-202
+NOTICE
+  h_2e249d121a4557 1-4
+README.md
+  h_2e249d121a4557 128-138
+autonomous-loop/LICENSE
+  h_2e249d121a4557 1-202
+autonomous-loop/NOTICE
+  h_2e249d121a4557 1-4
+install.sh
+  h_2e249d121a4557 282-284
+share/README.md
+  h_2e249d121a4557 91-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ac5e3aa4aa9704de9c61a8a49084913578a3b058",
+  "prompts": {},
+  "humans": {
+    "h_2e249d121a4557": {
+      "author": "JJ Martin <martinjaco@gmail.com>"
+    }
+  }
+}
