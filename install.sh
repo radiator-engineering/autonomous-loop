@@ -204,6 +204,15 @@ check_bundle() {  # <label> <zip> <skill> <harness> <template>
     bad=1
   fi
 
+  for f in LICENSE NOTICE; do
+    if cmp -s "$SRC/$s/$f" "$d/$s/$f"; then
+      say "     OK    embedded $f is byte-identical to source"
+    else
+      say "     FAIL  embedded $f missing from the bundle or differs from source"
+      bad=1
+    fi
+  done
+
   if cmp -s "$SRC/$s/assets/$tpl" "$d/$s/assets/$tpl"; then
     say "     OK    embedded assets/$tpl is byte-identical to source"
   else
@@ -223,6 +232,18 @@ check_share() {
       say "     OK    $f is byte-identical to share/$f"
     else
       say "     FAIL  $f differs from share/$f — the zip carried prose forward"
+      bad=1
+    fi
+  done
+  # The terms are packed by the same step that packs the prose, so they are gated the same way.
+  # Unchecked, a share zip that lost its LICENSE — or carried one from before a relicense — would
+  # pass this gate green, and a redistributable stating the wrong terms is worse than a stale
+  # paragraph.
+  for f in LICENSE NOTICE; do
+    if cmp -s "$SRC/$f" "$d/autonomous-loop-share/$f"; then
+      say "     OK    $f is byte-identical to $f"
+    else
+      say "     FAIL  $f missing from the zip or differs from $f"
       bad=1
     fi
   done
