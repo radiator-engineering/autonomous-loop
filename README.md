@@ -46,13 +46,25 @@ a long unattended run honest lives in one shared kernel:
 
 ## Install
 
-From this repo, into every Claude home on the machine:
+From this repo, into `~/.claude`:
 
 ```sh
 ./install.sh
 ```
 
 The install is fail-closed. If any gate exits non-zero, nothing is copied.
+
+If you keep more than one Claude home — separate profiles, a work config dir — name them and the
+install goes to each:
+
+```sh
+./install.sh --home ~/.claude --home ~/.claude-work
+CLAUDE_HOMES=~/.claude:~/.claude-work ./install.sh    # same thing, colon-separated
+```
+
+With neither given, `install.sh` uses `CLAUDE_CONFIG_DIR` if it is set, and `~/.claude` otherwise.
+A named home that does not exist is skipped rather than created, and an install that reaches no
+home at all fails instead of reporting success.
 
 To install somewhere else, or on another machine, unzip the packaged skill instead. It is a plain
 zip with a single top-level `autonomous-loop/` folder:
@@ -89,6 +101,10 @@ The whole gap is routing. The sharpest case is the saturator eval, where the bas
 unknown-size search as an enumerable queue and scored 2/5 against the skill's 5/5 — exactly the
 exhauster-versus-saturator call the router names as most decisive.
 
+The transcripts under `autonomous-loop-workspace/` are kept as they were produced. Some of them
+name a `gauntlet-loop` skill: a private predecessor converger this skill absorbed and replaced. It
+is not part of this repo, and nothing here depends on it.
+
 The decidability gate — refusing a loop aimed at something you cannot measure — did not
 discriminate at this model tier. Both configurations scored full marks on both decidability evals.
 The gate guards against regressions and helps weaker tiers, but it is not measured lift here, and
@@ -109,13 +125,24 @@ the benchmark says so.
 | `autonomous-loop-workspace/` | Recorded eval runs, with-skill against baseline |
 | `install.sh` | Gate, install, repack |
 
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 Radiator.
+
+Use it, fork it, ship it inside your own work, commercial or not. What the license asks in return
+is that you keep the copyright and NOTICE intact and say what you changed; what it does not grant
+is any right to the Radiator name or marks. Contributions come in under the same terms.
+
+`LICENSE` and `NOTICE` are packaged into the `.skill` bundle as well, so a copy that travels on its
+own still carries its terms.
+
 ## Working on the skill
 
 ```sh
 ./install.sh --check          # run the source gates, change nothing
 ./install.sh --check-bundles  # gate the .skill bundles on disk, change nothing
 ./install.sh --pack           # gate, repack the bundles, install nothing
-./install.sh                  # gate, back up, install to every Claude home, repack
+./install.sh                  # gate, back up, install (see Install for --home), repack
 ```
 
 `--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
