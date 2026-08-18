@@ -149,7 +149,8 @@ own still carries its terms.
 
 `--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
 green source gate does not mean the bundle on disk is shippable. Run `--pack` after editing
-anything under `autonomous-loop/`, which is packed into the `.skill` and byte-compared against it.
+anything under `autonomous-loop/` that the bundle carries — everything except `evals/` and `dist/`,
+which `EXCLUDES` keeps out — since the `.skill` is byte-compared against source.
 
 Each run backs up the current installs to `.install-backup/` first. Restore by copying them back.
 
