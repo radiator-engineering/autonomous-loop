@@ -1,0 +1,20 @@
+.github/workflows/gates.yml
+  h_8d030b808895cd 30
+CONTRIBUTING.md
+  h_8d030b808895cd 10,31-32
+README.md
+  h_8d030b808895cd 97,124,151-152
+install.sh
+  h_8d030b808895cd 158,322,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "0546793e6017de3d07c9ecb88fd25e4e58524ab6",
+  "prompts": {},
+  "humans": {
+    "h_8d030b808895cd": {
+      "author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
