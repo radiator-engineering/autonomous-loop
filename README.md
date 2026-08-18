@@ -125,6 +125,17 @@ the benchmark says so.
 | `autonomous-loop-workspace/` | Recorded eval runs, with-skill against baseline |
 | `install.sh` | Gate, install, repack |
 
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 Radiator.
+
+Use it, fork it, ship it inside your own work, commercial or not. What the license asks in return
+is that you keep the copyright and NOTICE intact and say what you changed; what it does not grant
+is any right to the Radiator name or marks. Contributions come in under the same terms.
+
+`LICENSE` and `NOTICE` are packaged into the `.skill` bundle as well, so a copy that travels on its
+own still carries its terms.
+
 ## Working on the skill
 
 ```sh

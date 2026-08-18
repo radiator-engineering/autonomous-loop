@@ -322,6 +322,9 @@ say "  autonomous-loop/dist/autonomous-loop.skill"
 SHD="$STAGE/autonomous-loop-share"
 mkdir -p "$SHD"
 cp "$SRC/share/README.md" "$SRC/share/BENCHMARK.md" "$SHD/"
+# The share zip is what gets handed to someone outside the repo, so it carries its own terms
+# rather than relying on the copy buried inside the .skill.
+cp "$SRC/LICENSE" "$SRC/NOTICE" "$SHD/"
 cp "$SRC/autonomous-loop/dist/autonomous-loop.skill" "$SHD/autonomous-loop.skill"
 (cd "$STAGE" && rm -f "$SHARE" && zip -qr "$SHARE" autonomous-loop-share -x '*.DS_Store')
 say "  autonomous-loop-share.zip"

@@ -88,3 +88,7 @@ source. So the scenario list you get here is the scenario list the template was 
 `BENCHMARK.md` in this bundle has the with-skill against baseline results across the eval
 iterations, reported as measured. It shows where the skill helps (routing) and where it does not
 (the decidability gate, which a capable base model already handles).
+
+## License
+
+Apache License 2.0 — see `LICENSE`, packaged alongside this file. Copyright 2026 Radiator.
