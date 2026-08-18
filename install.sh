@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Install the autonomous-loop skill from source to every Claude home, and repack the .skill bundle.
+# Install the autonomous-loop skill from source into one or more Claude homes, and repack the
+# .skill bundle.
 #
 #   ./install.sh                  run the gates, then install and repack
 #   ./install.sh --check          run the source gate only, change nothing
 #   ./install.sh --pack           gate, repack, gate the bundles; install nothing
 #   ./install.sh --check-bundles  gate the bundles already on disk, change nothing
+#
+# Where it installs, highest precedence first:
+#
+#   ./install.sh --home ~/.claude --home ~/.claude-work   repeatable, explicit
+#   CLAUDE_HOMES=~/.claude:~/.claude-work ./install.sh    colon-separated
+#   CLAUDE_CONFIG_DIR=~/.claude-alt ./install.sh          Claude Code's own config-dir variable
+#   ./install.sh                                          default: ~/.claude
 #
 # The gate is fail-closed: if any selfcheck exits non-zero, NOTHING is copied. A skill that
 # ships an untested stop rule is worse than one that ships nothing.
@@ -12,24 +20,48 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS=(autonomous-loop)
-HOMES=(
-  "$HOME/.claude"
-  "$HOME/.claude-profile-1"
-  "$HOME/.claude-profile-2"
-  "$HOME/.claude-profile-3"
-)
 # Present in source, never installed and never packaged. __pycache__ is here because importing
 # scripts/workbench_server.py once — to unit-test one helper — left a .pyc in the skill, and the next
-# install shipped it to four homes and both bundles before the verify caught the drift. Build output
+# install shipped it to every home and both bundles before the verify caught the drift. Build output
 # from a dev machine is not part of the skill.
 EXCLUDES=(--exclude=evals --exclude=dist --exclude=.DS_Store --exclude=__pycache__ --exclude='*.pyc')
 SHARE="$SRC/autonomous-loop-share.zip"
 
-MODE="${1:-all}"
-case "$MODE" in
-  all|--check|--pack|--check-bundles) ;;
-  *) printf 'usage: %s [--check|--pack|--check-bundles]\n' "$0" >&2; exit 2 ;;
-esac
+usage() {
+  printf 'usage: %s [--check|--pack|--check-bundles] [--home DIR ...]\n' "$(basename "$0")" >&2
+  exit 2
+}
+
+MODE=all
+HOMES=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check|--pack|--check-bundles) MODE="$1"; shift ;;
+    --home) [ $# -ge 2 ] || usage; HOMES+=("$2"); shift 2 ;;
+    --home=*) HOMES+=("${1#--home=}"); shift ;;
+    -h|--help) usage ;;
+    *) printf 'unknown argument: %s\n' "$1" >&2; usage ;;
+  esac
+done
+
+# No --home given: fall back to the environment, then to the one home every install has.
+if [ "${#HOMES[@]}" -eq 0 ]; then
+  if [ -n "${CLAUDE_HOMES:-}" ]; then
+    # Colon-separated, the way PATH is. Empty segments are dropped rather than expanding to "/".
+    IFS=':' read -r -a _split <<<"$CLAUDE_HOMES"
+    for h in "${_split[@]}"; do
+      if [ -n "$h" ]; then HOMES+=("$h"); fi
+    done
+  elif [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+    HOMES+=("$CLAUDE_CONFIG_DIR")
+  else
+    HOMES+=("$HOME/.claude")
+  fi
+fi
+# Expand a leading ~ so CLAUDE_HOMES=~/.claude works when it arrives unexpanded.
+for i in "${!HOMES[@]}"; do
+  case "${HOMES[$i]}" in "~/"*) HOMES[$i]="$HOME/${HOMES[$i]#\~/}" ;; "~") HOMES[$i]="$HOME" ;; esac
+done
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
