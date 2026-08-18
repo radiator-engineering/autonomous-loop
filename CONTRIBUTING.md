@@ -7,7 +7,7 @@ because the failure they describe already happened once.
 ## Before you open a pull request
 
 ```sh
-./install.sh --check          # source gates: every selfcheck, the evals JSON, the share prose
+./install.sh --check          # source gates: every selfcheck, plus the evals JSON
 ./install.sh --check-bundles  # the .skill bundles on disk, graded against source
 ```
 
@@ -20,7 +20,7 @@ invokes is a document, not a gate. `install.sh` compares the harnesses on disk a
 `run_gate` lines that call them and fails when one is missing, so this is enforced rather than
 remembered.
 
-**Repack after touching anything the bundles carry.** `autonomous-loop/dist/autonomous-loop.skill`
+**Repack after touching anything the bundle carries.** `autonomous-loop/dist/autonomous-loop.skill`
 is tracked, and the bundle gate grades it against source — the embedded harness must reproduce
 source's scenario count, and the template, `LICENSE`, and `NOTICE` must match byte for byte:
 
@@ -28,8 +28,15 @@ source's scenario count, and the template, `LICENSE`, and `NOTICE` must match by
 ./install.sh --pack
 ```
 
-That covers edits under `autonomous-loop/` and under `share/`, which is packed into the share zip
-and byte-compared against it.
+That covers edits under `autonomous-loop/` except `evals/` and `dist/`, which the `EXCLUDES` list
+in `install.sh` keeps out of the bundle — along with `.DS_Store` and Python build output. Editing
+only those, or only files outside `autonomous-loop/`, needs no repack.
+
+One wrinkle worth knowing: a zip records the timestamps of the files inside it, so `--pack` always
+produces different bytes even when nothing that ships has changed. If `git status` shows the
+`.skill` modified after a repack you did not need, restore it with
+`git checkout -- autonomous-loop/dist/autonomous-loop.skill` rather than committing the churn. The
+gate compares contents, not archive bytes, so it stays green either way.
 
 ## What a good change looks like
 
