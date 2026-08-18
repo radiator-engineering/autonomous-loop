@@ -250,9 +250,12 @@ if [ "$MODE" != "--pack" ]; then
   BACKUP="$SRC/.install-backup/$STAMP"
   say "== backup -> $BACKUP =="
   for home in "${HOMES[@]}"; do
-    # Key the backup by the full path with separators flattened, not by basename: two homes named
-    # .claude under different parents would otherwise overwrite each other's backup.
-    slot="${home#/}"; slot="${slot//\//_}"
+    # Key the backup by the whole path, not by basename: two homes named .claude under different
+    # parents would otherwise overwrite each other's backup. Escaping _ before folding / into _
+    # keeps the encoding reversible, so /a_b/.claude and /a/b/.claude stay distinct instead of both
+    # landing on a_b_.claude, and the leading separator is kept so a relative home cannot collide
+    # with the absolute one of the same name.
+    slot="${home//_/__}"; slot="${slot//\//_}"
     for s in "${SKILLS[@]}"; do
       [ -d "$home/skills/$s" ] || continue
       mkdir -p "$BACKUP/$slot/skills"
@@ -268,7 +271,10 @@ if [ "$MODE" != "--pack" ]; then
     # A home that does not exist is a typo, not a profile to create: making ~/.clade/skills/ would
     # look like a clean install and put the skill somewhere Claude Code never reads.
     [ -d "$home" ] || { say "  SKIP  $home (no such directory)"; continue; }
-    mkdir -p "$home/skills"
+    # mkdir without -p on purpose. -p would recreate the home itself if it vanished between the
+    # check above and this line, which is the one thing this block promises not to do; plain mkdir
+    # fails on a missing parent instead.
+    [ -d "$home/skills" ] || mkdir "$home/skills"
     for s in "${SKILLS[@]}"; do
       rm -rf "$home/skills/$s"
       mkdir -p "$home/skills/$s"
