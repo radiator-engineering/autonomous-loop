@@ -27,13 +27,4 @@ jobs:
         run: ./install.sh --check
 
       - name: Bundle gates
-        # The share zip is build output and is not tracked, so it has to exist before the bundle
-        # gate can grade it. --pack builds it — and rebuilds dist/autonomous-loop.skill, which IS
-        # tracked and is the thing under test. Put the committed bundle back before grading, or
-        # this step would only ever prove that a bundle built ten seconds ago matches source, and
-        # a stale committed bundle would sail through.
-        run: |
-          cp autonomous-loop/dist/autonomous-loop.skill "$RUNNER_TEMP/committed.skill"
-          ./install.sh --pack
-          cp "$RUNNER_TEMP/committed.skill" autonomous-loop/dist/autonomous-loop.skill
-          ./install.sh --check-bundles
+        run: ./install.sh --check-bundles

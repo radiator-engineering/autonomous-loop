@@ -26,7 +26,6 @@ SKILLS=(autonomous-loop)
 # install shipped it to every home and both bundles before the verify caught the drift. Build output
 # from a dev machine is not part of the skill.
 EXCLUDES=(--exclude=evals --exclude=dist --exclude=.DS_Store --exclude=__pycache__ --exclude='*.pyc')
-SHARE="$SRC/autonomous-loop-share.zip"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'FAILED: %s\n' "$*" >&2; exit 1; }
@@ -140,15 +139,6 @@ for s in "${SKILLS[@]}"; do
   fi
 done
 
-# The share prose lives in source (share/) and nothing regenerates it, so the only way it stays
-# true is to state no counts — it points at the harness instead. Enforced, because prose drifts.
-if grep -Eqi '[0-9]+ +(scenario|check|invariant|file)s?\b' "$SRC/share/README.md"; then
-  say "  FAIL  share/README.md hardcodes a count; point at the harness instead"
-  gate_fail=1
-else
-  say "  PASS  share/README.md states no counts"
-fi
-
 [ "$gate_fail" -eq 0 ] || die "gate is red — nothing installed"
 say "  gate green"
 
@@ -165,7 +155,7 @@ fi
 # A bundle has to reproduce source's own result or it does not ship. Unzip what was packed, run
 # the harness FROM INSIDE the copy, and require exit 0, source's scenario count, and a template
 # identical to source. The count is compared against SOURCE for a reason: a bundle graded by its
-# own embedded harness always agrees with itself, which is how a share zip shipped a harness
+# own embedded harness always agrees with itself, which is how a bundle once shipped a harness
 # eighteen hours behind the template it was grading, passing clean over the bugs it carried.
 bad=0
 
@@ -221,40 +211,9 @@ check_bundle() {  # <label> <zip> <skill> <harness> <template>
   fi
 }
 
-check_share() {
-  local d="$WORK/gate/share" f
-  say "  -- autonomous-loop-share.zip"
-  if [ ! -f "$SHARE" ]; then say "     FAIL  no share zip at $SHARE"; bad=1; return 0; fi
-  mkdir -p "$d"
-  if ! unzip -oq "$SHARE" -d "$d" 2>/dev/null; then say "     FAIL  not readable as a zip"; bad=1; return 0; fi
-  for f in README.md BENCHMARK.md; do
-    if cmp -s "$SRC/share/$f" "$d/autonomous-loop-share/$f"; then
-      say "     OK    $f is byte-identical to share/$f"
-    else
-      say "     FAIL  $f differs from share/$f — the zip carried prose forward"
-      bad=1
-    fi
-  done
-  # The terms are packed by the same step that packs the prose, so they are gated the same way.
-  # Unchecked, a share zip that lost its LICENSE — or carried one from before a relicense — would
-  # pass this gate green, and a redistributable stating the wrong terms is worse than a stale
-  # paragraph.
-  for f in LICENSE NOTICE; do
-    if cmp -s "$SRC/$f" "$d/autonomous-loop-share/$f"; then
-      say "     OK    $f is byte-identical to $f"
-    else
-      say "     FAIL  $f missing from the zip or differs from $f"
-      bad=1
-    fi
-  done
-  check_bundle "share-embedded/autonomous-loop.skill" \
-    "$d/autonomous-loop-share/autonomous-loop.skill" autonomous-loop selfcheck_loops.mjs loop-template.js
-}
-
 gate_bundles() {
   check_bundle "autonomous-loop/dist/autonomous-loop.skill" "$SRC/autonomous-loop/dist/autonomous-loop.skill" \
     autonomous-loop selfcheck_loops.mjs loop-template.js
-  check_share
 }
 
 if [ "$MODE" = "--check-bundles" ]; then
@@ -340,16 +299,6 @@ mkdir -p "$SRC/autonomous-loop/dist"
    && zip -qr "$SRC/autonomous-loop/dist/autonomous-loop.skill" autonomous-loop -x '*.DS_Store')
 say "  autonomous-loop/dist/autonomous-loop.skill"
 
-SHD="$STAGE/autonomous-loop-share"
-mkdir -p "$SHD"
-cp "$SRC/share/README.md" "$SRC/share/BENCHMARK.md" "$SHD/"
-# The share zip is what gets handed to someone outside the repo, so it carries its own terms
-# rather than relying on the copy buried inside the .skill.
-cp "$SRC/LICENSE" "$SRC/NOTICE" "$SHD/"
-cp "$SRC/autonomous-loop/dist/autonomous-loop.skill" "$SHD/autonomous-loop.skill"
-(cd "$STAGE" && rm -f "$SHARE" && zip -qr "$SHARE" autonomous-loop-share -x '*.DS_Store')
-say "  autonomous-loop-share.zip"
-
 # ---- 6. Verify what actually landed ---------------------------------------------------------
 say "== verify =="
 if [ "$MODE" != "--pack" ]; then
@@ -370,7 +319,7 @@ gate_bundles
 
 [ "$bad" -eq 0 ] || die "verify found drift — installs and bundles do not match source"
 if [ "$MODE" = "--pack" ]; then
-  say "== done: bundles repacked and gated, nothing installed =="
+  say "== done: bundle repacked and gated, nothing installed =="
 else
-  say "== done: $installed skill install(s), 1 bundle, 1 share zip =="
+  say "== done: $installed skill install(s), 1 bundle =="
 fi

@@ -94,7 +94,7 @@ can never produce a positive finish; an open blocker forces `status='blocked'`.
 
 ## Evidence
 
-`share/BENCHMARK.md` reports with-skill against baseline across both eval iterations. Pooled, the
+`BENCHMARK.md` reports with-skill against baseline across both eval iterations. Pooled, the
 skill scores 23/23 and the baseline 18/23, on single samples graded by a separate strict grader.
 
 The whole gap is routing. The sharpest case is the saturator eval, where the baseline treated an
@@ -121,7 +121,7 @@ the benchmark says so.
 | `autonomous-loop/assets/workbench.html` | Live dashboard for a running loop |
 | `autonomous-loop/scripts/` | The self-check harnesses, the launch gate, the dashboard server |
 | `autonomous-loop/evals/`, `autonomous-loop/dist/` | Present in source, never installed (see `EXCLUDES` in `install.sh`) |
-| `share/` | Prose packed into `autonomous-loop-share.zip` |
+| `BENCHMARK.md` | With-skill against baseline, both eval iterations |
 | `autonomous-loop-workspace/` | Recorded eval runs, with-skill against baseline |
 | `install.sh` | Gate, install, repack |
 
@@ -148,8 +148,8 @@ own still carries its terms.
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the two rules the gates enforce on a change.
 
 `--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
-green source gate does not mean the bundles on disk are shippable. Run `--pack` after editing
-anything under `share/`, which is packed into the share zip and byte-compared against it.
+green source gate does not mean the bundle on disk is shippable. Run `--pack` after editing
+anything under `autonomous-loop/`, which is packed into the `.skill` and byte-compared against it.
 
 Each run backs up the current installs to `.install-backup/` first. Restore by copying them back.
 

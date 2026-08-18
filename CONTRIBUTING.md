@@ -7,7 +7,7 @@ because the failure they describe already happened once.
 ## Before you open a pull request
 
 ```sh
-./install.sh --check          # source gates: every selfcheck, the evals JSON, the share prose
+./install.sh --check          # source gates: every selfcheck, plus the evals JSON
 ./install.sh --check-bundles  # the .skill bundles on disk, graded against source
 ```
 
@@ -28,8 +28,8 @@ source's scenario count, and the template, `LICENSE`, and `NOTICE` must match by
 ./install.sh --pack
 ```
 
-That covers edits under `autonomous-loop/` and under `share/`, which is packed into the share zip
-and byte-compared against it.
+That covers any edit under `autonomous-loop/`, since everything there is packed into the `.skill`
+and byte-compared against source.
 
 ## What a good change looks like
 
