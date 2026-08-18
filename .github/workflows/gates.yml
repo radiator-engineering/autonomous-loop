@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
 
+# Nothing here writes to the repo: the job reads the tree, runs the gates, and reports. Say so,
+# rather than inheriting whatever the repository default happens to be.
+permissions:
+  contents: read
+
 jobs:
   gates:
     runs-on: ubuntu-latest

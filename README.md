@@ -145,6 +145,8 @@ own still carries its terms.
 ./install.sh                  # gate, back up, install (see Install for --home), repack
 ```
 
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the two rules the gates enforce on a change.
+
 `--check` and `--check-bundles` answer different questions, and `--check` says so on the way out: a
 green source gate does not mean the bundles on disk are shippable. Run `--pack` after editing
 anything under `share/`, which is packed into the share zip and byte-compared against it.
