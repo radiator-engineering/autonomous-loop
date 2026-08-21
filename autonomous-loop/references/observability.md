@@ -17,6 +17,7 @@ the hero slot per archetype** is each `Surface` line in `archetypes.md`. Citatio
 | `<LEDGER_DIR>/progress.json` | ledger agent, every round (`writeLedger`) | is it working *right now* |
 | `<LEDGER_DIR>/HANDOFF.md` | ledger agent, every round (`writeLedger`) | how does a fresh agent pick this up |
 | `<LEDGER_DIR>/claims.jsonl` | ledger agent, every round (`writeLedger`) | *which* atoms, with what evidence |
+| `<LEDGER_DIR>/footprint.jsonl` | every worker, claim-first then close-last (`footprintDirective`) | which files each attempt *meant* to touch, and how it ended — a trailing claim with no close is an attempt that died mid-work |
 | `<LEDGER_DIR>/artifacts/` | worker/measure agents | *how* it is working, and what the count missed |
 | `<LEDGER_DIR>/activity.jsonl` | optional; any agent, or the harness | what the loop is doing *between* rounds |
 | `<RUNS_JSONL_PATH>` | finalize agent at terminal status | has this target moved across weeks |
@@ -273,6 +274,8 @@ log the resume.
 The same discipline covers `retryDirective`: an item's second dispatch tells its worker the shared
 tree may still hold the dead attempt's half-finished edits and to git-status/diff before working, but
 a first attempt's prompt stays untouched.
+
+The retry also reads `footprint.jsonl` — the dead attempt's claim line names the files to inspect — and the finalize agent reconciles claimed footprints against `git status --porcelain`, surfacing unclaimed edits and cross-item collisions under HANDOFF's "Traps".
 
 Because the agents write it, this is the source that works on **any** substrate, including a
 committed CI harness where no transcript exists.
