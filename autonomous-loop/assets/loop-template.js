@@ -1538,9 +1538,9 @@ function footprintDirective(item) {
   // with no close is how the retry learns its predecessor died and where to look.
   return `\n\nFOOTPRINT (bookkeeping, first and last actions; not part of the task, never let it ` +
     `change your answer): BEFORE your first edit, append one line to ${LEDGER_DIR}/footprint.jsonl ` +
-    `(create it if missing): {"ts":"<ISO-8601 now>","item":"${item.id}","event":"claim",` +
+    `(create it if missing): {"ts":"<ISO-8601 now>","item":${JSON.stringify(item.id)},"event":"claim",` +
     `"files":[<the file paths you intend to edit>]}. If your scope grows mid-work, append another ` +
-    `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":"${item.id}",` +
+    `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":${JSON.stringify(item.id)},` +
     `"event":"close","status":"<one of: done, noop, blocked>","note":"<one line: where this attempt ended>"}. ` +
     `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
 }

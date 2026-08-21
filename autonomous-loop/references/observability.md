@@ -10,7 +10,7 @@ precedence rule are `kernel.md` §6; the **witness rule** is `SKILL.md` invarian
 the hero slot per archetype** is each `Surface` line in `archetypes.md`. Citations into
 `assets/loop-template.js` name the function, not a line: the template moves.
 
-## The five files
+## The seven files
 
 | File | Written by | Answers |
 |---|---|---|
@@ -27,7 +27,7 @@ The terminal step writes the final board — the status into `progress.json`, on
 surfaces it: a dead finalize can promote nothing (the status is fixed before it runs) but it leaves
 every one of those three reading as if the run were still going, and only the caller can see it.
 
-The Workflow driver has no filesystem access. The **agents** write all five; the driver only computes
+The Workflow driver has no filesystem access. The **agents** write all seven; the driver only computes
 what they are told to write. That is why the ledger step is a prompt, not a `writeFile`.
 
 `claims.jsonl` gets one `{id, evidence}` line per atom newly confirmed that round — the only per-atom

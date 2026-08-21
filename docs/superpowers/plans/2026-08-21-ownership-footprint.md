@@ -38,9 +38,13 @@
     // issue #8 subtask 1). The claim line survives a crash because appending it is the worker's FIRST
     // act; the close line is its last. The driver interpolates nothing that varies per attempt, so a
     // failing item's later prompts stay byte-identical to each other — the stuck scenario holds.
+    // r1 fails its first verify so the retry dispatch is exercised too: the directive must ride
+    // EVERY attempt, first and retried alike, which is why the expect is an `every` over >= 2 prompts.
     workClaimsFootprint:
-                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
-                     expect: (r, h) => (h.prompts['work:r1'] || []).length > 0 &&
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => (h.prompts['work:r1'] || []).length >= 2 &&
                        (h.prompts['work:r1'] || []).every(p =>
                          p.includes('footprint.jsonl') && p.includes('"event":"claim"') && p.includes('"event":"close"')) },
 ```
@@ -58,10 +62,10 @@ function footprintDirective(item) {
   // with no close is how the retry learns its predecessor died and where to look.
   return `\n\nFOOTPRINT (bookkeeping, first and last actions; not part of the task, never let it ` +
     `change your answer): BEFORE your first edit, append one line to ${LEDGER_DIR}/footprint.jsonl ` +
-    `(create it if missing): {"ts":"<ISO-8601 now>","item":"${item.id}","event":"claim",` +
+    `(create it if missing): {"ts":"<ISO-8601 now>","item":${JSON.stringify(item.id)},"event":"claim",` +
     `"files":[<the file paths you intend to edit>]}. If your scope grows mid-work, append another ` +
-    `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":"${item.id}",` +
-    `"event":"close","status":"done"|"noop"|"blocked","note":"<one line: where this attempt ended>"}. ` +
+    `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":${JSON.stringify(item.id)},` +
+    `"event":"close","status":"<one of: done, noop, blocked>","note":"<one line: where this attempt ended>"}. ` +
     `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
 }
 ```
@@ -98,7 +102,7 @@ git commit -m "Make every worker claim its footprint before the first edit"
 - [ ] **Step 1: Write the failing assertions.** (a) Extend `retryGetsTreeWarning`'s `expect` so the retried prompt must also name the footprint — replace its `expect` with:
 
 ```js
-                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:') && p.includes('no close line')) &&
+                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:') && p.includes('no close line') && p.includes('git status')) &&
                        !((h.prompts['work:r1'] || [])[0] || '').includes('RETRY:') },
 ```
 
@@ -110,7 +114,8 @@ git commit -m "Make every worker claim its footprint before the first edit"
     finalizeReconcilesFootprint:
                    { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
-                       p.includes('footprint.jsonl') && p.includes('git status --porcelain')) },
+                       p.includes('footprint.jsonl') && p.includes('git status --porcelain') &&
+                       p.includes('"Traps"') && p.includes('no claim covers') && p.includes('claimed by two different items')) },
 ```
 
 - [ ] **Step 2: Run to verify both fail.** `node autonomous-loop/scripts/selfcheck_loops.mjs` → expect FAILs on exactly `retryGetsTreeWarning` and `finalizeReconcilesFootprint`. Capture the output.
