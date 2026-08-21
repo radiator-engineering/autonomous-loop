@@ -18,7 +18,9 @@ CI runs both on every pull request. Neither costs tokens, and both are determini
 **A new `scripts/selfcheck_*.mjs` needs its `run_gate` line in the same change.** A harness nothing
 invokes is a document, not a gate. `install.sh` compares the harnesses on disk against the
 `run_gate` lines that call them and fails when one is missing, so this is enforced rather than
-remembered.
+remembered. The scan only recognizes the `selfcheck_*` name — a gate named something else
+(`eval_driver.mjs`, `lint_design.mjs`) gets no automated check, so its `run_gate` line has to be
+added by hand and review is what guards that it was.
 
 **Repack after touching anything the bundle carries.** `autonomous-loop/dist/autonomous-loop.skill`
 is tracked, and the bundle gate grades it against source — the embedded harness must reproduce

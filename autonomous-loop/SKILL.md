@@ -486,7 +486,10 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
    directories of any finished runs you have, because a gate that only ever meets synthetic fixtures
    is a gate whose real corpus nobody has looked at. That is how the three-state split was found.
    If you edited this skill's own prose, add `node scripts/selfcheck_docs.mjs`; if you touched
-   `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`.
+   `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`. Before spending a
+   real budget, `node scripts/eval_driver.mjs <driver.js>` runs the filled driver against scripted
+   adversity for zero tokens, and `node scripts/lint_design.mjs <driver.js> <BRIEF.md>` reads the
+   design for predictable failures the gates below cannot see.
 5. **Stand up the workbench, then pass the launch gate** (`node scripts/preflight_launch.mjs …`).
    Green is the precondition for launching, and the moment you hand the user the dashboard URL.
 6. **Dry-run one round** — show the ledger, the first verified atoms, and the artifacts before
