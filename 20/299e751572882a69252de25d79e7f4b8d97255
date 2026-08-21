@@ -1,0 +1,23 @@
+install.sh
+  s_ea64c4b449125a::t_bb4af33495e48f 118-120
+autonomous-loop/scripts/eval_driver.mjs
+  s_ea64c4b449125a::t_574e6a53f48b16 176-237,259
+  s_ea64c4b449125a::t_0d63571b661cd7 14-15,18
+  s_ea64c4b449125a::t_bd8c3bcb576050 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "20299e751572882a69252de25d79e7f4b8d97255",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
