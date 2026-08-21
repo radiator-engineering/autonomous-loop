@@ -106,15 +106,37 @@ A run that showed a human nothing, or left the next agent nothing to read, may n
 success. `SKILL.md` invariant 8 states the witness half.
 
 **Both are decided by a terminal AUDIT, not by the ledger agent.** One cheap `TIER.mechanical` agent
-runs after the last round and before the status is computed; it reads `LEDGER_DIR` and returns three
-scalars (`AUDIT_SCHEMA`): `hero`, `handoff`, `handoffRound`, `captures`. The agent that skipped `HANDOFF.md` used
+runs after the last round and before the status is computed; it reads `LEDGER_DIR` and returns four
+scalars (`AUDIT_SCHEMA`): `hero`, `handoff`, `handoffRound`, `captures`, `distinctCaptures`. The agent that skipped `HANDOFF.md` used
 to be the one asked whether it wrote `HANDOFF.md` — guardrail #1 (worker ≠ verifier) broken inside the
 kernel, in the two rungs that exist to catch a run reporting well and showing nothing.
 
 | Gate | True when the audit returns | Demotes to |
 |---|---|---|
-| `witnessed` | `hero` is `artifact`, **or** `none` with `captures === 0` | `unwitnessed` |
+| `witnessed` | `hero` is `artifact`, **or** `none` with `captures === 0` | see the three below |
 | `documented` | `handoff` is `complete` **and** `handoffRound === state.round` | `undocumented` |
+
+The witness half demotes to one of **three** statuses, not one, because it was firing the same word at
+three different facts. Replayed over five real ledgers the hero slot had been filled zero times, and
+the single `unwitnessed` was wrong about two of the five runs:
+
+| Audit shape | Status | What it tells the operator |
+|---|---|---|
+| `hero: none`, `captures: 0` | *(witnessed)* | Nothing to show, said out loud. Converges. |
+| frames exist, `hero` points at none | `unpointed` | **Promote one.** The run produced evidence; only the pointer is missing. |
+| `captures >= 2`, `distinctCaptures === 1` | `evidence_regressed` | **The camera is jammed.** Ranks with the blockers. |
+| nothing on disk, no hero | `unwitnessed` | **Build a capture path.** |
+
+`distinctCaptures` is the jammed-camera test, and it is checked *before* `hero === 'artifact'` — a
+board leading with a frame from a stuck harness is the worst reading of all, not an acceptable one.
+Measured: a harness broke at round 3 and each later capture re-emitted round 1's frame byte-for-byte,
+four files deep, while the board read 7 of 9 confirmed with no blocker. `evidence_regressed` sits with
+the blockers rather than with the reporting rungs because a capture path that worked and stopped makes
+every later round's evidence untrustworthy, including rounds already counted green.
+
+The rung is replayable without running a loop: `scripts/replay_gates.mjs` extracts the decision
+function from the template (never a copy of it) and runs it over synthetic cases plus any ledger
+directories you pass.
 
 The documentation gate is the narrower one deliberately: there is no honest "a handoff is impossible
 here." The **round equality** is what makes staleness detectable — a run dying at round 40 must leave a
@@ -124,14 +146,16 @@ capture at round 40; a *handoff* from round 3 is a fossil.
 
 Both fail closed — a dead auditor, a null return, a value outside the schema (`usableAudit`) or a
 mismatched round leaves both false. The audit can only demote: it has no way to say "success". **Ladder order** in
-the driver's terminal `status` expression: `blocked` → `budget_exhausted` → `unwitnessed` →
-`undocumented` → the archetype's positive status. Showing a human nothing is the louder failure, so
+the driver's terminal `status` expression: `blocked` → `evidence_regressed` → `budget_exhausted` →
+`unpointed` → `unwitnessed` → `undocumented` → the archetype's positive status. Showing a human nothing is the louder failure, so
 it wins when both are true. Both are demote-only, and the confirmed count is still reported
 truthfully either way: the gate demotes the **status**, not the count.
 
 **Proof** — scenarios in `selfcheck_loops.mjs`: `heroAbsent` (verified 3 atoms, showed nothing)
 expects `unwitnessed` with `confirmed === 3`; `heroNone` (said so out loud) converges;
-`heroNoneWithGallery` (said so out loud with four frames on disk) demotes, and `heroNoneNoGallery`
+`heroNoneWithGallery` (said so out loud with four frames on disk) demotes to `unpointed`;
+`heroNoneJammedCamera` and `heroArtifactJammedCamera` (four frames, one picture) demote to
+`evidence_regressed` whether or not the board points at one; and `heroNoneNoGallery`
 keeps the honest half converging; `auditNoCaptures` (an otherwise-perfect audit missing the new
 scalar) is unreadable and fails closed; `handoffAbsent` expects `undocumented` with the witness rung
 satisfied; `bothMissing` ranks
@@ -169,14 +193,16 @@ The terminal audit already opens `LEDGER_DIR`, so it now answers a fourth scalar
 many image files sit in `artifacts/` — and `witnessed` reads:
 
 ```js
-audit.hero === 'artifact' || (audit.hero === 'none' && audit.captures === 0)
+witnessVerdict(audit, everCaptured(state)) === 'witnessed'
 ```
 
-A `none` returned beside a non-empty gallery is a **lying hero** and demotes to `unwitnessed`, exactly
-as `lyingLedger` demotes a handoff the auditor cannot find. `captures` is asked as its own question
+A `none` returned beside a non-empty gallery is not believed, and now demotes to `unpointed` rather
+than `unwitnessed` — the run produced evidence and failed only to point at it, which is one line of
+bookkeeping and should not read as "showed a human nothing". `captures` is asked as its own question
 for the same reason the audit exists at all: `hero` is what the board points at, `captures` is what
-the run produced, and the two disagreeing is the finding. It is required by `AUDIT_SCHEMA` and by
-`usableAudit`, so an audit that omits it is unreadable and both gates fail closed.
+the run produced, and the two disagreeing is the finding. `distinctCaptures` asks the follow-up that
+counting alone cannot: *are those frames the same picture?* Both are required by `AUDIT_SCHEMA` and by
+`usableAudit`, so an audit that omits either is unreadable and both gates fail closed.
 
 Note what the rung does **not** do: it never promotes. A full gallery with `hero.type="none"` is
 demoted, not quietly upgraded on the gallery's behalf — the gate is about what the board *leads with*,

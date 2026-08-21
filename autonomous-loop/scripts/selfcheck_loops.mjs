@@ -40,6 +40,12 @@
 //                    whole purpose was that board. The audit now counts the directory. The middle case
 //                    is what stops the fix collapsing into "distrust `none`", which would punish a
 //                    genuinely non-visual loop into permanent failure.
+//                    heroNoneWithGallery expects `unpointed` rather than `unwitnessed`, and the
+//                    distinction is the point: measured across five real ledgers, the hero slot was
+//                    filled ZERO times and two of those runs had frames on disk. One of them had a
+//                    proper before/after pair and 19 confirmed atoms. Telling that run "you showed a
+//                    human nothing" was false; the fix is one line of bookkeeping and the status now
+//                    says which line.
 //   deadFinalize   — the terminal step writes the final board (status → progress.json, one line →
 //                    runs.jsonl, the finished HANDOFF.md) and had no schema and no reader: a dead one
 //                    left progress.json reading "running" forever. It cannot change the outcome — the
@@ -142,6 +148,11 @@ function loadDriver(mode, maxRounds = '6', dryRounds = '2', mandates = "['correc
     '<<DRY_ROUNDS>>': dryRounds, '<<MAX_RETRIES>>': '2', '<<BATCH>>': '8',
     '<<LENSES>>': "['a','b']", '<<INVARIANTS>>': "['inv1','inv2']",
     '<<MANDATES>>': mandates,
+    // EVIDENCE_EVERY is UNQUOTED in the template, so it must be a literal number here or it becomes a
+    // bare `x`. EFFORT is quoted, but it is validated at load time against EFFORT_PLAN, so 'x' would
+    // throw before any scenario ran — both need real values for the same reason, from opposite causes.
+    '<<EFFORT>>': 'balanced',
+    '<<EVIDENCE_EVERY>>': '1',
   }
   for (const [k, v] of Object.entries(subs)) src = src.split(k).join(v)
   // Every remaining placeholder becomes a bare `x`, which is only valid because the rest live inside
@@ -211,7 +222,11 @@ function harness(scn) {
   //              to tell "no picture was possible" from "a picture exists and the board ignored it".
   // A scenario may override `audit` outright — that is how a dead auditor, a lying ledger writer and a
   // stale claim are expressed, since none of the three is derivable from an honest writer.
-  const disk = { hero: null, handoffRound: null, captures: 0 }
+  //   distinctCaptures — of those frames, how many are DIFFERENT PICTURES. The honest case is that
+  //              every capture is a new one, so this tracks `captures`; a scenario overrides the audit
+  //              to model a JAMMED CAMERA (frames accumulating, all identical), which is the shape a
+  //              real harness produced for five rounds while the board reported a healthy run.
+  const disk = { hero: null, handoffRound: null, captures: 0, distinctCaptures: 0 }
   const agent = async (prompt, opts = {}) => {
     const label = opts.label || ''
     counts[label] = (counts[label] || 0) + 1
@@ -242,17 +257,25 @@ function harness(scn) {
     if (label === 'ledger') {
       const r = scn.ledger ? scn.ledger(n) : { hero: 'artifact', handoff: 'written' }
       if (r && (r.hero === 'artifact' || r.hero === 'none')) disk.hero = r.hero
-      if (r && r.hero === 'artifact') disk.captures++           // a round that captured left a frame
+      if (r && r.hero === 'artifact') { disk.captures++; disk.distinctCaptures++ }   // a frame, and a NEW one
       if (r && r.handoff === 'written') disk.handoffRound = n   // one ledger call per round ⇒ n IS the round
       return r
     }
     // THE TERMINAL AUDIT — a different agent, reading the files. `n` is not consulted: it runs once.
     if (label === 'audit') {
-      return scn.audit ? scn.audit(disk, counts['ledger'] || 0)
+      const a = scn.audit ? scn.audit(disk, counts['ledger'] || 0)
         : { hero: disk.hero || 'absent',
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
             handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound,
-            captures: disk.captures }
+            captures: disk.captures, distinctCaptures: disk.distinctCaptures }
+      // Scenarios written before the gate could see a jammed camera answer with `captures` alone, and
+      // the kernel rejects an audit missing a field (correctly — `undefined` in the stuck test would
+      // compare false and hand the case back to the count). Default it to "every frame is distinct",
+      // which is what those scenarios meant: they were testing the hero slot, not the harness. A
+      // scenario that wants the jam says so by returning distinctCaptures explicitly.
+      return a && typeof a === 'object' && a.captures !== undefined && a.distinctCaptures === undefined
+        ? { ...a, distinctCaptures: a.captures }
+        : a
     }
     if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize') return scn.finalize ? scn.finalize() : { finalized: true }
@@ -330,14 +353,31 @@ const SCENARIOS = {
     // `witnessed` is ever narrowed back to reading the hero slot alone, this is the case that reds.
     heroNoneWithGallery:
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
-                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 4 }),
-                     expect: r => r.status === 'unwitnessed' && r.converged === false && r.confirmed === 3 },
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 4, distinctCaptures: 4 }),
+                     expect: r => r.status === 'unpointed' && r.converged === false && r.confirmed === 3 },
+    // THE JAMMED CAMERA. Same shape as the case above in every field a count can see — four frames in
+    // artifacts/, a complete handoff, three confirmed atoms — and one field apart: the four frames are
+    // one picture. MEASURED, and this is the run this whole rung was rebuilt for: a capture harness
+    // broke at round 3 and every later "capture" re-emitted round 1's frame, byte for byte, while the
+    // board read 7 of 9 confirmed with no blocker. `unpointed` would be the wrong answer here — the
+    // fix is not "promote a frame", it is "the camera is broken and every round since is ungated".
+    heroNoneJammedCamera:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 4, distinctCaptures: 1 }),
+                     expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
+    // And the jam outranks a POINTED frame, which is the nastiest reading of all: a green run leading
+    // its board with a picture of nothing having happened. If the stuck test is ever moved below the
+    // `artifact` branch, this is the case that reds.
+    heroArtifactJammedCamera:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 4, distinctCaptures: 1 }),
+                     expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
     // The other half, and it is what keeps the case above from being satisfiable by a gate that simply
     // stopped believing `none`: the same run with an EMPTY directory converges. A loop that genuinely
     // cannot produce a picture is still allowed to say so and finish.
     heroNoneNoGallery:
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'none', handoff: 'written' }),
-                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 0 }),
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 0, distinctCaptures: 0 }),
                      expect: r => r.converged === true && r.confirmed === 3 },
     // An auditor whose answer the kernel cannot READ is an auditor that did not answer, and `captures`
     // is load-bearing now, so its absence has to make the whole verdict unusable exactly as a missing
