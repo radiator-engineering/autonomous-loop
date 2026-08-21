@@ -1,0 +1,21 @@
+install.sh
+  s_ea64c4b449125a::t_a5a01cb713b351 121
+autonomous-loop/scripts/lint_design.mjs
+  s_ea64c4b449125a::t_b749207066bd09 1-406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5d29d3856a8694595cfb32f1c6a94ba87be30401",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
