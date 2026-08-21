@@ -1,0 +1,20 @@
+autonomous-loop/scripts/lib/spoof_world.mjs
+  s_ea64c4b449125a::t_bd6b8498609653 34,41-42,44
+  s_ea64c4b449125a::t_aaf7db0098fe83 65-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "ed5a4a594782aa92203fdd0e54f4d080777b9795",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
