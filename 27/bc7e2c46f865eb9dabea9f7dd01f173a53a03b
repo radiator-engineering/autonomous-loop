@@ -1,0 +1,29 @@
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_ec329523701f47 504,515,517-518
+autonomous-loop/scripts/check_harness.mjs
+  s_ea64c4b449125a::t_a9328682d3118d 22-33
+autonomous-loop/scripts/lint_design.mjs
+  s_ea64c4b449125a::t_b4cf8d77cfb4d4 406
+  s_ea64c4b449125a::t_f4a37b18b55ca9 225-245,254
+  s_ea64c4b449125a::t_82076b5b218761 359-366
+  s_ea64c4b449125a::t_d54090350312fe 3,13-16
+  s_ea64c4b449125a::t_01250894e7b51b 37-43
+autonomous-loop/SKILL.md
+  s_ea64c4b449125a::t_d5b56d6fba88ca 321-331,336-339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "27bc7e2c46f865eb9dabea9f7dd01f173a53a03b",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
