@@ -1,0 +1,22 @@
+autonomous-loop/SKILL.md
+  s_ea64c4b449125a::t_6e865169e8c3d4 332-340
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_194dfb1535e9f0 516,518-519
+  s_ea64c4b449125a::t_9b02d715ad60f6 504
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e165095dd9b5c4534c5ffbb626886be0d1955c96",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
