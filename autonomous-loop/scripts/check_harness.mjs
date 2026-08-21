@@ -19,6 +19,18 @@
 // unreviewed edit produced evidence nobody checked, so the honest move is to stop and say so rather
 // than to keep counting. Re-pin deliberately with --accept once a human has looked.
 //
+// OWNS ITS BROWSER. A pinned harness is trusted to keep behaving as pinned, but pinning only proves
+// the SCRIPT held still — it says nothing about what the script is allowed to touch. A capture
+// harness may only ever drive a browser it starts itself: its own --user-data-dir, its own
+// --remote-debugging-port, launched and killed by the script. An operator's own already-running
+// browser is never a CDP target. Measured: a harness that attached to the operator's daily Chrome
+// over its debug port, to fake two signed-in profiles via Target.createBrowserContext, crashed that
+// browser five times in twelve minutes (use-after-free) while this pin — and every CDP call — stayed
+// green the whole time. `scripts/lint_design.mjs`'s L6 flags this at design time, before a harness
+// exists to pin. The companion half lives in the capture path itself, not here: a capture that finds
+// the browser's process id changed since its last call must report a failed capture, not a frame
+// (SKILL.md Step 4).
+//
 //   node scripts/check_harness.mjs <ledger-dir>            # verify; exit 1 on drift
 //   node scripts/check_harness.mjs <ledger-dir> --accept   # re-pin current contents, and say what moved
 

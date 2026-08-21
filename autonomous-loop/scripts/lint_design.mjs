@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // lint_design.mjs — read a FILLED loop driver + its BRIEF.md and name the predictable death before
-// launch, not after five workers have already died on it. Five lints, each a heuristic over the
+// launch, not after five workers have already died on it. Six lints, each a heuristic over the
 // TEXT a generation session produced (the driver's Config literals + the BRIEF's prose), plus one
 // (L2) that measures actual prompt bytes off a single spoofed happy run of the driver.
 //
@@ -10,8 +10,10 @@
 // Severity contract: only L3 (a structurally blind verifier facing a visual evidence contract) and
 // L1's compound shape (a whole-file directive PAIRED with an iterate-until-pass loop against a file
 // over the line budget — the recorded shape that killed five workers) are HARD fails. L2 never
-// fails — its numbers are estimates, printed, not gates. L4 and L5 are warnings: a taste bar with
-// no mechanical check, or two files both claiming to be the one count that matters.
+// fails — its numbers are estimates, printed, not gates. L4, L5 and L6 are warnings: a taste bar with
+// no mechanical check, two files both claiming to be the one count that matters, or a capture plan
+// that names attaching to an existing/running browser instead of a harness starting its own
+// (SKILL.md Step 4 — measured: this crashed the operator's own browser five times in twelve minutes).
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -32,6 +34,13 @@ const L3_NEGATION = /\b(no|not|non|never|without)\b[^.;\n]*/gi
 const L4_TASTE = /\b(polished|beautiful|elegant|feels right|looks good|clean|delightful|high[- ]quality)\b/i
 const L4_GROUNDED = /(`[^`]+`|\bnpm |\bnode |\bpytest|\bexit 0|\bdiff\b|\.mjs\b|\.py\b|\bpx\b|[<>]=? ?\d)/
 const L5_ROLE = /\b(queue|backlog|count|source of truth|status file)\b/i
+// L6: a capture plan that reaches for a browser it did not start. Covers the debug-port flag itself,
+// and prose describing attaching to one — "attach to the running Chrome", "existing browser session",
+// "already-running profile's remote debugging port", etc. Deliberately narrow to attach-shaped
+// language so a harness that merely *launches* Chrome with `--remote-debugging-port` (normal, and how
+// a harness talks to the instance it just started) does not trip it — the trigger word is the target
+// being existing/running/already-launched, not the flag's presence.
+const L6_ATTACH = /remote-debugging-port[^.\n]{0,40}\b(existing|running|already[- ]running|operator|current)\b|\b(existing|running|already[- ]running)\b[^.\n]{0,40}\bremote-debugging-port|attach(?:ing|es|ed)?\s+(?:to\s+)?(?:an?\s+)?(?:the\s+)?(existing|running|already[- ]running|operator'?s?)\s+(browser|chrome|instance|profile|session)/i
 const PRICE_PER_MTOK_IN = { opus: 15, sonnet: 3, haiku: 0.8 }   // USD, input, 2026-08 — an ESTIMATE knob, update freely
 const L2_DEFAULT_THRESHOLD = 2      // $ per confirmed atom, default warn line
 const PATH_TOKEN = /[\w./-]+\.\w{1,4}/g
@@ -213,6 +222,27 @@ function lintL5(driverSrc, brief) {
   return { level: 'pass', reason: 'no dual source-of-truth found' }
 }
 
+// ---- L6: capture harness must own its browser --------------------------------------------------
+// SKILL.md Step 4: a capture harness may only ever drive a browser it started itself — its own
+// user-data-dir, its own debug port, launched and killed by the script. An operator's own
+// already-running browser is never a CDP target. Measured: a harness that attached to the
+// operator's daily Chrome over its remote-debugging port, to fake two signed-in profiles via
+// Target.createBrowserContext, crashed that browser five times in twelve minutes while the board
+// stayed green throughout. Scans the same text L3 reads the Evidence contract from, plus the atom
+// items L1/L4 read, since a design session can describe its capture plan in either place.
+function lintL6(driverSrc, brief) {
+  const evidenceBody = extractSection(brief, '## Evidence') || ''
+  const items = [evidenceBody, ...collectAtomItems(driverSrc, brief)]
+  for (const text of items) {
+    const m = text.match(L6_ATTACH)
+    if (m) {
+      const snippet = text.length > 100 ? text.slice(Math.max(0, m.index - 20), m.index + 80) + '…' : text
+      return { level: 'warn', reason: `capture plan attaches to an existing/running browser instead of starting its own: "${snippet.trim()}" — a harness must own its browser (own user-data-dir, own debug port, started and killed by the script); an operator's browser is never a CDP target` }
+    }
+  }
+  return { level: 'pass', reason: 'capture plan does not attach to an existing/running browser' }
+}
+
 // ---- aggregator -----------------------------------------------------------------------------
 export function runLints(driverSrc, brief, measured, opts = {}) {
   return {
@@ -221,6 +251,7 @@ export function runLints(driverSrc, brief, measured, opts = {}) {
     L3: lintL3(driverSrc, brief),
     L4: lintL4(driverSrc, brief),
     L5: lintL5(driverSrc, brief),
+    L6: lintL6(driverSrc, brief),
   }
 }
 
@@ -325,6 +356,14 @@ function buildL5Fixture() {
   return { driverSrc: fillTemplate('exhauster'), brief, opts: {} }
 }
 
+function buildL6Fixture() {
+  const brief = GREEN_BRIEF.replace(
+    /## Evidence\n[^\n]+/,
+    '## Evidence\nattach to the existing browser on its remote-debugging-port and grab two isolated profiles'
+  )
+  return { driverSrc: fillTemplate('exhauster'), brief, opts: {} }
+}
+
 function buildL2Fixture() {
   // Priced with the real spoofed happy run's bytes; the threshold is dropped to a fraction of a
   // cent so the (small, honest) figure trips the warn without fabricating a giant prompt.
@@ -364,6 +403,7 @@ async function selfTest() {
     { lint: 'L4', level: 'warn', build: buildL4Fixture },
     { lint: 'L5', level: 'warn', build: buildL5Fixture },
     { lint: 'L2', level: 'warn', build: buildL2Fixture },
+    { lint: 'L6', level: 'warn', build: buildL6Fixture },
   ]
   for (const red of REDS) {
     const built = red.build()
