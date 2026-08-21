@@ -127,7 +127,7 @@ The tests run in this order, and the order is the whole design (`witnessVerdict`
 |---|---|---|---|
 | 1 | `captures >= 4`, `distinctCaptures * 2 <= captures` | `evidence_regressed` | **The camera is jammed.** Ranks with the blockers. |
 | 2 | `hero: artifact` | *(witnessed)* | A real frame, pointed at. Converges. |
-| 3 | the run *ever* reported an artifact, but points at none now | `evidence_regressed` | **The harness worked and stopped.** |
+| 3 | the run *ever* reported an artifact, points at none now, **and** `captures < 4` | `evidence_regressed` | **The harness worked and stopped**, going only on the pointer history because the gallery is too small for row 1's ratio test to have an opinion. |
 | 4 | `hero: none`, `captures: 0` | *(witnessed)* | Nothing to show, said out loud. Converges. |
 | 5 | frames exist, `hero` points at none, never captured before | `unpointed` | **Promote one.** Only the pointer is missing. |
 | 6 | nothing on disk, no hero | `unwitnessed` | **Build a capture path.** |
@@ -144,12 +144,20 @@ Two subtleties the order encodes, both of which triage depends on:
   later capture re-emitted round 1's frame byte-for-byte, four files deep, while the board read 7 of 9
   confirmed with no blocker — 1 distinct of 4, still fires.
 - **`unpointed` and `evidence_regressed` look identical on disk** — frames present, hero pointing at
-  none — and the tiebreak is *history*, not the directory. A run whose earlier rounds reported an
-  `artifact` hero (row 3, `everCaptured`) had a working camera and lost the pointer, so it is
-  `evidence_regressed`, not `unpointed`. Only a run that produced frames but *never* pointed at one
-  (row 5) is the one-line bookkeeping fix. So the doc's own motivating jam case — a harness that had
-  been capturing every round — lands on `evidence_regressed`, and "promote a frame" would be exactly
-  the wrong advice for it. `evidence_regressed` sits with the blockers rather than with the reporting
+  none — and row 3's tiebreak is *history*, not the directory, but only below row 1's own floor. A run
+  whose earlier rounds reported an `artifact` hero (`everCaptured`) and whose gallery is still small
+  (`captures < 4`, too little for the ratio test to have cleared or convicted it) had a working camera
+  and lost the pointer, so it is `evidence_regressed`, not `unpointed`. Once the gallery is big enough
+  for row 1's ratio test to run, that test's finding stands: a healthy, mostly-distinct gallery is not
+  re-accused just because history shows an earlier `artifact` hero. **MEASURED** (issue #4): a 25-round
+  exhauster with 28 captures, 22 distinct — all duplicates early-run, capture script pinned unchanged
+  the whole run — whose final item legitimately had nothing to show read `evidence_regressed` under the
+  old unconditional history check; the harness had provably never stopped, so the accurate read is
+  `unpointed` (row 5), promote a frame. Only a run that produced frames but *never* pointed at one, or
+  one whose history-based case falls below the floor, lands here as the one-line bookkeeping fix. The
+  doc's own motivating jam case — a harness that broke mid-run and re-emitted a stale frame — still
+  lands on `evidence_regressed` via row 1's ratio test, and "promote a frame" would be exactly the
+  wrong advice for it. `evidence_regressed` sits with the blockers rather than with the reporting
   rungs because a capture path that worked and stopped makes every later round's evidence
   untrustworthy, including rounds already counted green.
 
@@ -177,7 +185,11 @@ expects `unwitnessed` with `confirmed === 3`; `heroNone` (said so out loud) conv
 `evidence_regressed` whether or not the board points at one, and `heroJammedCamera` (six frames, two
 distinct — a majority-repeat gallery) demotes the same way, proving the test is `distinctCaptures * 2
 <= captures` and not `< captures`; `heroBenignDuplicates` (six frames, four distinct — under half
-repeats, the corpus-shaped counterexample) reaches its positive status instead; and `heroNoneNoGallery`
+repeats, the corpus-shaped counterexample) reaches its positive status instead;
+`heroFinalNoneAfterHealthyGallery` (issue #4 — earlier rounds pointed at a real frame, the final
+round's item legitimately has none, 28 captures/22 distinct) demotes to `unpointed`, not
+`evidence_regressed`, proving row 3's history tiebreak yields to row 1's ratio test once the gallery
+clears its floor; and `heroNoneNoGallery`
 keeps the honest half converging; `auditNoCaptures` (an otherwise-perfect audit missing the new
 scalar) is unreadable and fails closed; `handoffAbsent` expects `undocumented` with the witness rung
 satisfied; `bothMissing` ranks
@@ -219,11 +231,14 @@ witnessVerdict(audit, everCaptured(state)) === 'witnessed'
 ```
 
 A `none` returned beside a non-empty gallery is not believed. *Which* demotion it earns depends on the
-run's history, not on the directory alone: a run that never once pointed at a frame demotes to
+directory first and the run's history second: a run that never once pointed at a frame demotes to
 `unpointed` — it produced evidence and failed only to point at it, one line of bookkeeping, and should
-not read as "showed a human nothing"; a run that *had* been pointing at real captures and lost the
-pointer demotes to `evidence_regressed`, because a camera that worked and stopped is a blocker, not a
-bookkeeping slip (see the ordered table above). `captures` is asked as its own question
+not read as "showed a human nothing." A run that *had* been pointing at real captures and lost the
+pointer demotes to `evidence_regressed` only while the gallery is still too small (`captures < 4`) for
+the ratio test to have cleared it; once the gallery is big enough and that test finds it healthy, a lost
+pointer alone reads as `unpointed`, not as a blocker — a camera that worked and stopped is a blocker,
+losing a pointer on a healthy camera is a bookkeeping slip (see the ordered table above, row 3, and
+issue #4). `captures` is asked as its own question
 for the same reason the audit exists at all: `hero` is what the board points at, `captures` is what
 the run produced, and the two disagreeing is the finding. `distinctCaptures` asks the follow-up that
 counting alone cannot: *are those frames the same picture?* Both are required by `AUDIT_SCHEMA` and by
