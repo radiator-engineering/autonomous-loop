@@ -118,6 +118,7 @@ run_gate autonomous-loop selfcheck_board.mjs
 # Not selfcheck_* by name, so the completeness scan below does not cover them: these two lines are
 # load-bearing, remove one and its gate silently stops running.
 run_gate autonomous-loop eval_driver.mjs
+run_gate autonomous-loop lint_design.mjs
 
 # Proof that the list above is not missing one. A harness on disk that nothing runs is invisible, so
 # compare the two sets rather than trusting the list to have been updated.
