@@ -44,7 +44,10 @@ for (const f of readdirSync(dir).sort()) {
   const full = join(dir, f)
   let st; try { st = statSync(full) } catch { continue }
   if (!st.isFile() || EXCLUDE.test(f)) continue
-  const body = readFileSync(full)
+  // Read under the same fail-soft rule as statSync: a file that cannot be read (permissions, or a
+  // concurrent delete between readdir and here) is SKIPPED, not a crash — it simply is not a harness
+  // this check can pin. Read once, then decide, because the shebang test needs the bytes too.
+  let body; try { body = readFileSync(full) } catch { continue }
   // A harness is anything that can RUN: marked executable, a known script extension, OR a shebang.
   // The shebang catch matters because a `capture.bash` invoked as `bash capture.bash` is neither
   // executable nor matched by RUNNABLE, and would otherwise slip the pin entirely.

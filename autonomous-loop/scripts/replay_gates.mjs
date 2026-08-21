@@ -61,9 +61,13 @@ function auditOf(dir) {
   // else is `absent`.
   const hero = pj.hero || {}
   const heroFile = typeof hero.path === 'string' ? join(dir, hero.path) : null
-  const seededNone = hero.type === 'none' && /no capture yet/i.test(hero.note || '')
+  // Production only accepts `none` as a real answer when it carries a non-empty note (the reason a
+  // picture is impossible); an empty note is `absent`, and the seeded "No capture yet." placeholder —
+  // a slot nothing has filled — is `absent` too, not an honest declaration of an evidence-free run.
+  const note = typeof hero.note === 'string' ? hero.note.trim() : ''
+  const seededNone = /^no capture yet/i.test(note)
   const heroClass = heroFile && existsSync(heroFile) ? 'artifact'
-    : (hero.type === 'none' && !seededNone) ? 'none'
+    : (hero.type === 'none' && note && !seededNone) ? 'none'
     : 'absent'
   return {
     audit: {
