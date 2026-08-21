@@ -1435,16 +1435,20 @@ function captureClause(item, state) {
 // it is the only place in the kernel where such input is read at all.
 function witnessVerdict(audit, everCaptured) {
   if (audit === null) return 'unwitnessed'                                  // dead auditor: fail closed
-  // THE JAMMED CAMERA, and it is tested before everything including `artifact`. Two or more frames
-  // that are all one image is not a gallery; it is a harness that kept exiting 0 while emitting the
-  // same picture. Measured: loop-475 wrote dock-1/2/7/8.png over eight rounds, all four the identical
-  // empty-state frame from round 1, while the board read 7 of 9 confirmed and hasBlocker false. A
-  // board POINTING at dock-8.png would have been the worst reading of all — a green run leading with
-  // a picture of nothing having happened — which is why `artifact` does not get to answer first.
-  // ANY duplicate is a jam, not only a gallery that is all one image: the capture contract rejects a
-  // frame identical to any earlier one, so a gallery of A, B, A (3 frames, 2 distinct) already broke
-  // it — a harness that re-emitted A once will do it again. `< captures`, not `=== 1`.
-  if (audit.captures >= 2 && audit.distinctCaptures < audit.captures) return 'regressed'
+  // THE JAMMED CAMERA, and it is tested before everything including `artifact`. A board POINTING at a
+  // stuck harness's frame would be the worst reading of all — a green run leading with a picture of
+  // nothing having happened — which is why `artifact` does not get to answer first. But a jam is a
+  // camera that is MOSTLY stuck, not a camera that ever repeated a frame: at least half the captured
+  // frames have to be repeats before the harness gets accused. Measured on the loop that motivated the
+  // rung: loop-475 wrote dock-1/2/7/8.png over eight rounds, all four the identical empty-state frame
+  // from round 1 — 1 distinct of 4, still fires (1*2 <= 4). Measured against two corpora that broke
+  // "ANY duplicate is a jam": a design-system run at 110 captures/77 distinct, a healthy 40-round
+  // camera that would have been accused for its 33 incidental repeats; and an impeccable-radix run at
+  // 6/4, where the camera was fine while the run itself was stuck on something unrelated. Below the
+  // 4-capture floor there is not enough evidence to accuse the harness — an early single duplicate is
+  // what a real long-running camera produces, not a jam — and occasional duplicates past the floor are
+  // the same honest noise, not a broken harness. `distinctCaptures * 2 <= captures`, not `< captures`.
+  if (audit.captures >= 4 && audit.distinctCaptures * 2 <= audit.captures) return 'regressed'
   if (audit.hero === 'artifact') return 'witnessed'
   if (everCaptured) return 'regressed'                                      // it worked once; it does not now
   if (audit.hero === 'none' && audit.captures === 0) return 'witnessed'     // honestly nothing to show

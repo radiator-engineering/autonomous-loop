@@ -91,7 +91,7 @@ const SCENARIOS = {
     { audit: () => ({ hero: 'none', handoff: 'complete', handoffRound: 1, captures: 4, distinctCaptures: 4 }),
       ledger: () => ({ hero: 'none', handoff: 'written' }),
       want: r => r.status === 'unpointed', fixHandoffRound: true },
-    { audit: () => ({ hero: 'artifact', handoff: 'complete', handoffRound: 1, captures: 3, distinctCaptures: 1 }),
+    { audit: () => ({ hero: 'artifact', handoff: 'complete', handoffRound: 1, captures: 6, distinctCaptures: 2 }),
       want: r => r.status === 'evidence_regressed', fixHandoffRound: true },
     { audit: () => ({ hero: 'artifact', handoff: 'absent', handoffRound: 0, captures: 2, distinctCaptures: 2 }),
       want: r => r.status === 'undocumented' },
