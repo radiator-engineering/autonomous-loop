@@ -980,9 +980,11 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   // 2. WORK: fresh-context workers, one per item, in parallel. A worker that throws → null.
   //    An item carrying a blocker (from the frontier), flagged for escalation, or STUCK gets the
   //    strong tier; a stuck item also gets the change-approach directive appended to its prompt.
+  //    An item with a prior failed attempt also gets the dirty-tree warning, since its retry worker
+  //    starts in the same shared tree the dead attempt half-edited.
   phase('Work')
   const worked = await parallel(batch.map(item => () =>
-    agent(mode.workerPrompt(item, state) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
+    agent(mode.workerPrompt(item, state) + retryDirective(item.id) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
       { ...((item.severity === 'blocker' || state.escalate.has(item.id) || isStuck(item.id)) ? TIER.escalate : TIER.work),
         phase: 'Work', label: `work:${item.id}` })
       .then(out => ({ item, out }))
@@ -1498,6 +1500,16 @@ function agePatience(state, grew) {
 function stalled(state) { return state.stall >= BLOCKER_PATIENCE }
 function bumpFail(id) { state.fails.set(id, (state.fails.get(id) || 0) + 1) }
 function isStuck(id) { return (state.fails.get(id) || 0) >= STUCK_AFTER }
+function retryDirective(id) {
+  // Same byte-identity discipline as stuckDirective: a first attempt returns '' so a run resumed
+  // with resumeFromRunId replays it from cache. The string appears only once an item has a failed
+  // attempt behind it — the exact moment the shared tree may hold that attempt's unfinished edits.
+  if (!((state.fails.get(id) || 0) > 0)) return ''
+  return `\n\nRETRY: a previous attempt at this item failed, and the working tree may still hold its ` +
+    `half-finished edits. Before you work, run git status and git diff on the files this item touches. ` +
+    `For each leftover change, either revert it or re-derive it and deliberately adopt it. ` +
+    `Never let an inherited edit satisfy the done-criterion unexamined.`
+}
 function stuckDirective(id) {
   // Below STUCK_AFTER this returns '' so the worker prompt stays BYTE-IDENTICAL — a run resumed with
   // resumeFromRunId replays those agents from cache instead of re-paying for them. The string only

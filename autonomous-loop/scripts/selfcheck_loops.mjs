@@ -887,10 +887,15 @@ const SCENARIOS = {
                      critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => (id === 'r1' ? fail(id, 'major') : pass(id)),
                      expect: (r, h) => {
                        const p = h.prompts['work:r1']
-                       // The directive fires after STUCK_AFTER VERIFIED failures — so attempts 1..N are
-                       // byte-identical and a resumed run replays them from cache; attempt N+1 differs.
-                       return p.length > STUCK_AFTER && p.slice(0, STUCK_AFTER).every(s => s === p[0]) &&
-                         !p[0].includes('STUCK:') && p[STUCK_AFTER].includes('STUCK:') && h.models['work:r1'] === 'opus'
+                       // The directive fires after STUCK_AFTER VERIFIED failures. Attempt 1 (no prior
+                       // failure) carries neither directive; attempts 2..STUCK_AFTER each follow a failed
+                       // attempt, so retryDirective fires on all of them and they are byte-identical to
+                       // EACH OTHER — a resumed run still replays that stretch from cache — while attempt
+                       // STUCK_AFTER+1 additionally gains STUCK:.
+                       return p.length > STUCK_AFTER && p.slice(1, STUCK_AFTER).every(s => s === p[1]) &&
+                         !p[0].includes('STUCK:') && !p[0].includes('RETRY:') &&
+                         p[1].includes('RETRY:') && !p[1].includes('STUCK:') &&
+                         p[STUCK_AFTER].includes('STUCK:') && h.models['work:r1'] === 'opus'
                      } },
     unbounded:     { ...NULLCAP, critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => pass(id),
                      expect: ends(r => r.converged === true && r.confirmed > 0) },
@@ -1067,6 +1072,18 @@ const SCENARIOS = {
                      critique: n => (n === 3 ? null : CRIT(['fail', 'pass', 'pass'])),
                      verify: id => (id === 'r1' ? fail(id, 'major') : pass(id)),
                      expect: (r, h) => (h.prompts['work:r1'] || []).some(p => p.includes('STUCK:')) },
+    // A RETRIED WORKER STARTS IN THE SAME SHARED TREE THE FAILED ATTEMPT HALF-EDITED. The driver has
+    // no filesystem access and workers share one artifact by design, so the only fix is a prompt
+    // directive on retried dispatches, mirroring stuckDirective. r1 fails its round-1 verify (so
+    // `fails` goes to 1) and passes on its round-2 re-dispatch. The first work:r1 prompt must stay
+    // byte-identical to before this change — no attempt has failed yet — and every prompt after a
+    // failed attempt must carry the warning.
+    retryGetsTreeWarning:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:')) &&
+                       !((h.prompts['work:r1'] || [])[0] || '').includes('RETRY:') },
   },
 }
 
