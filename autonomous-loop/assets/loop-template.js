@@ -1541,7 +1541,7 @@ function footprintDirective(item) {
     `(create it if missing): {"ts":"<ISO-8601 now>","item":"${item.id}","event":"claim",` +
     `"files":[<the file paths you intend to edit>]}. If your scope grows mid-work, append another ` +
     `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":"${item.id}",` +
-    `"event":"close","status":"done"|"noop"|"blocked","note":"<one line: where this attempt ended>"}. ` +
+    `"event":"close","status":"<one of: done, noop, blocked>","note":"<one line: where this attempt ended>"}. ` +
     `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
 }
 function activityDirective(phase, label) {

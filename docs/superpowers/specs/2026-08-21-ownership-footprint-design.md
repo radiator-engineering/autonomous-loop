@@ -76,6 +76,7 @@ The worker stamps `ts` itself, exactly as `activity.jsonl` already works, and th
 - **The footprint is testimony about intent, not a measurement.** A worker can under-claim, over-claim, or skip the append entirely; nothing enforces it in v1. What makes this acceptable: the record is cheap, the finalize reconciliation *measures* the gap between claimed and actual, and the bench will show how honest real workers are before anything gates on it.
 - **A worker that crashes before its claim line leaves nothing.** The window is small (the claim is the first act) but not zero. The retry worker's existing `git status` instruction remains the backstop for exactly this case.
 - **Concurrent appends to one file** rely on line-append atomicity, the same bet `activity.jsonl` already makes. Same mitigation: append-only, one line per write, never rewrite.
+- **The coherence pass leaves no footprint.** Its single-owner reconciliation edits are legitimate but unclaimed, so finalize's reconciliation will list them as unclaimed edits — a predictable false-positive class. Acceptable while reconciliation only surfaces prose in "Traps"; it must be addressed before anything ever gates on the footprint record.
 
 ---
 **The one-liner for the room:** *An attempt that writes down what it will touch before touching it can die without becoming a mystery — and every stronger fix on issue #8 starts from that record.*
