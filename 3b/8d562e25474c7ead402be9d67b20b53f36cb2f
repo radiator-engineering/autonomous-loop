@@ -1,0 +1,47 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_714568cdc84890 375-383
+  s_ea64c4b449125a::t_e0f4d25e9548dd 479-485
+autonomous-loop/SKILL.md
+  s_ea64c4b449125a::t_7ab33f2cb478fa 403-410
+  s_ea64c4b449125a::t_4a79259f045a8a 418-423
+autonomous-loop/scripts/check_harness.mjs
+  s_ea64c4b449125a::t_b6b53bd02e8cbd 47-50,52-54,57-73
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_302b0c455ced18 321
+  s_ea64c4b449125a::t_71ed993933dea4 1660-1668
+  s_ea64c4b449125a::t_02b96c4376abf7 297
+  s_ea64c4b449125a::t_3c0a99b500d199 1440-1443
+  s_ea64c4b449125a::t_beaa4a236b781e 1586-1600
+  s_ea64c4b449125a::t_a609f3982b6072 1547-1549,1551-1556
+  s_ea64c4b449125a::t_9c0c5149283e78 550-555,558
+  s_ea64c4b449125a::t_d38499e768e61a 128-131,133-137,147-149,168-172,180-182
+  s_ea64c4b449125a::t_158d44e79dc804 1261-1263,1266
+  s_ea64c4b449125a::t_01c08d70a9c643 1279,1283-1293
+  s_ea64c4b449125a::t_c9a4601b90c19a 1397
+autonomous-loop/scripts/replay_gates.mjs
+  s_ea64c4b449125a::t_efdbfb903900b6 98
+  s_ea64c4b449125a::t_7d975321b69329 56-67,70
+autonomous-loop/scripts/selfcheck_preflight.mjs
+  s_ea64c4b449125a::t_82eb3325a91d92 143-146
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_acb44be96a5352 123-150
+  s_ea64c4b449125a::t_6fa9d458bd14d2 216-221
+  s_ea64c4b449125a::t_205941a05a4edb 109
+  s_ea64c4b449125a::t_f38693a6dd4018 173-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "3b8d562e25474c7ead402be9d67b20b53f36cb2f",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
