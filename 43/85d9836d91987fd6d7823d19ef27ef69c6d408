@@ -1,0 +1,23 @@
+autonomous-loop/scripts/eval_driver.mjs
+  s_ea64c4b449125a::t_2b32482c928b5b 94
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_d04c606d51ad18 176-179
+  s_ea64c4b449125a::t_64c8d28018e5a7 127
+  s_ea64c4b449125a::t_b7d696a22ace5d 137-142,144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "4385d9836d91987fd6d7823d19ef27ef69c6d408",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
