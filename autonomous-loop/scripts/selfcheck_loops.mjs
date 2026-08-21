@@ -368,15 +368,23 @@ const SCENARIOS = {
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
                      audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 4, distinctCaptures: 1 }),
                      expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
-    // A PARTIALLY duplicated gallery — three frames, two distinct (A, B, A). Not every frame is one
-    // image, so a `distinctCaptures === 1` test would wave it through; but the capture contract rejects
-    // a frame identical to ANY earlier one, so a harness that re-emitted A once has already broken and
-    // will again. `distinctCaptures < captures` is the test, and this is the case that reds if it is
-    // ever narrowed back to `=== 1`.
-    heroPartialDuplicate:
+    // A MAJORITY-duplicated gallery — six frames, two distinct. At least half the frames are repeats,
+    // which is the floor the jam rule is tuned to: not "any duplicate ever", but "the camera is mostly
+    // stuck". `distinctCaptures * 2 <= captures` is the test, and this is the case that reds if it is
+    // ever loosened back toward `< captures`.
+    heroJammedCamera:
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
-                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 3, distinctCaptures: 2 }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 6, distinctCaptures: 2 }),
                      expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
+    // The corpus-shaped counterexample that broke "ANY duplicate is a jam": a real long-running camera
+    // produces occasional duplicates without being stuck. Six frames, four distinct — under half
+    // repeats — so this run must reach its POSITIVE status, not `evidence_regressed`. Measured against
+    // two real corpora: a 40-round design-system run at 110/77 and an impeccable-radix run at 6/4 where
+    // the camera was fine while the run itself was stuck on something else entirely.
+    heroBenignDuplicates:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 6, distinctCaptures: 4 }),
+                     expect: r => r.converged === true && r.confirmed === 3 },
     // The other half, and it is what keeps the case above from being satisfiable by a gate that simply
     // stopped believing `none`: the same run with an EMPTY directory converges. A loop that genuinely
     // cannot produce a picture is still allowed to say so and finish.
