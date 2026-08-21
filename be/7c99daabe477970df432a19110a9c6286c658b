@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md
+  s_ea64c4b449125a::t_af99995fbedc53 1-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "be7c99daabe477970df432a19110a9c6286c658b",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
