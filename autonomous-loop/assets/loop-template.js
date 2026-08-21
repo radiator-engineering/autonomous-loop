@@ -92,6 +92,15 @@ const ACTIVITY = LEDGER_DIR + '/activity.jsonl'  // append-only; what the board 
                                           // The driver cannot write it (no filesystem access), so the agents that
                                           // ALREADY run each round append to it. No extra agent, no extra round.
 const ACTIVITY_LOG = true                 // set false only where prompt budget is tighter than observability
+const VERIFIED_COMMITS = true             // commit-per-verified-pass (issue #8 subtask 2): the Ledger step
+                                          // commits a just-passed item's OWN claimed files, one commit per
+                                          // item, before any other step, so the canonical artifact is always
+                                          // the last green commit. Set false only when TARGET is not a git
+                                          // working tree (a design canvas, a live system, a non-VCS artifact)
+                                          // — the instruction is defensive either way (it skips itself if the
+                                          // tree is not a git repo) but the knob keeps a non-git run from
+                                          // paying for an instruction that can only ever no-op. Read directly
+                                          // by writeLedger and retryDirective, never branched on by MODE.
 const BRIEF = LEDGER_DIR + '/BRIEF.md'    // the intake, written BEFORE the run and gated by the launch gate
                                           // (scripts/preflight_launch.mjs BRIEF). The handoff carries its
                                           // framing forward so "what this run is for" is the human's answer,
@@ -963,6 +972,12 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   state.round++
   state.roundGap = false          // producer blindness is per-round; `unverified` is NOT reset here
   state.roundAccepted = []
+  state.roundPassed = []          // every item whose verdict THIS round was pass — the commit-per-pass
+                                  // list (issue #8 subtask 2). Distinct from roundAccepted: that one is
+                                  // filtered by countsAsProgress/everConfirmed (the archetype's counted
+                                  // metric), this one is the raw verify predicate — a re-verified item
+                                  // that no longer counts as NEW progress still did real, passing work
+                                  // on the artifact and still belongs at HEAD.
   log(`Round ${state.round} — confirmed ${state.confirmed.length}, open ${state.open.size}, dry ${state.dry}`)
 
   // 1. FRONTIER: archetype-specific source of the next batch. Returns [{id, ...work}] or [].
@@ -1045,6 +1060,10 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
     // entry means is "nobody could read a verdict", not "the verdict went against us".
     state.unverified.delete(item.id)
     if (v.pass) {
+      // Every pass, whether or not it counts toward the archetype's tally — see the field comment
+      // on roundPassed above. Evidence text is best-effort for the commit message the ledger step
+      // writes; a verdict that omits it still names the item by id.
+      state.roundPassed.push({ id: item.id, evidence: (v.evidence || v.claim || '').slice(0, 200) })
       state.fails.delete(item.id)    // consecutive, not cumulative: one pass resets the stuck count
       clearBlocked(state, item)      // the independent verifier's pass is the ONLY clear path for a blocker
       // saturator/explorer only count an atom if NOVEL; converger counts each criterion once. The
@@ -1524,7 +1543,25 @@ function retryDirective(id) {
   // Same byte-identity discipline as stuckDirective: a first attempt returns '' so a run resumed
   // with resumeFromRunId replays it from cache. The string appears only once an item has a failed
   // attempt behind it — the exact moment the shared tree may hold that attempt's unfinished edits.
+  // VERIFIED_COMMITS is fixed for the whole run, so which branch fires below never varies attempt to
+  // attempt — the byte-identity the `stuck` scenario checks (attempts 2..STUCK_AFTER share one prompt)
+  // holds either way.
   if (!((state.fails.get(id) || 0) > 0)) return ''
+  if (VERIFIED_COMMITS) {
+    // Commit-per-verified-pass (issue #8 subtask 2, spec: verified-commits-design) makes this
+    // UNCONDITIONAL rather than evaluative: a pass is committed the round it happens, so the working
+    // tree can never hold a verified pass that is not already at HEAD. Anything still sitting on this
+    // item's OWN claimed files is, by construction, this item's own dead attempt — nothing to judge,
+    // nothing worth re-deriving; a genuine pass would already be a commit.
+    return `\n\nRETRY: a previous attempt at this item failed. Every verified pass is committed the ` +
+      `round it happens, so nothing of value can be sitting uncommitted on this item's claimed files. ` +
+      `Read ${LEDGER_DIR}/footprint.jsonl, take the union of "files" across every claim line for this ` +
+      `item, and reset each one UNCONDITIONALLY before you start: git checkout -- <path> for a ` +
+      `tracked file the dead attempt modified or deleted, git clean -f -- <path> for one it created ` +
+      `and never committed. Do not inspect the diff for anything worth keeping — there is nothing to ` +
+      `evaluate. (This only covers files THIS item claimed; it says nothing about a different item's ` +
+      `files even if they happen to overlap.) Then re-derive the item from a clean tree.`
+  }
   return `\n\nRETRY: a previous attempt at this item failed, and the working tree may still hold its ` +
     `half-finished edits. Read ${LEDGER_DIR}/footprint.jsonl and find this item's lines first: a ` +
     `trailing claim line with no close line after it is the attempt that died mid-work, and its ` +
@@ -1617,6 +1654,7 @@ async function writeLedger(state) {
     last_reported: state.reported,
   }
   const newClaims = (state.roundAccepted || []).map(a => ({ id: a.id, evidence: a.evidence || a.claim || '' }))
+  const passed = state.roundPassed || []   // this round's verified passes — commit-per-pass, see below
   // The blocked set, BOUNDED — the handoff's "Open blockers" section needs ids and what is stuck, and
   // the driver is the only place that knows them. Passed as a slice for the same reason the explorer
   // passes a recent tail rather than the whole grounded log (kernel #6): the driver's context stays
@@ -1626,6 +1664,26 @@ async function writeLedger(state) {
   }))
   const overflow = openBlockers(state).length - blockers.length
   const r = await agent(
+    // COMMIT-PER-VERIFIED-PASS (issue #8 subtask 2, spec: verified-commits-design). Done FIRST, and by
+    // THIS agent alone, because the Ledger step is the one point in the round every verifier's answer
+    // has already funneled through and only ONE agent runs — commits from parallel verifiers racing
+    // for the same .git/index would silently drop a genuine pass, which is the exact failure mode this
+    // exists to close. Scoped to each item's OWN claimed files (never a bare `git add -A`, which would
+    // sweep in a different item's still-uncommitted work from this same BATCH>1 round) and one commit
+    // per item — never a combined commit for the round — so each pass stays independently revertible.
+    (VERIFIED_COMMITS && passed.length
+      ? `Before anything else: this round verified ${passed.length} item(s) as PASS: ` +
+        `${JSON.stringify(passed.map(p => p.id))}. First check whether this working tree is inside a ` +
+        `git repository (\`git rev-parse --is-inside-work-tree\`); if it is not, skip commits entirely ` +
+        `and note that in your report — do not fail this step over it. If it is, then for EACH id above, ` +
+        `in order: read ${LEDGER_DIR}/footprint.jsonl and take the union of "files" across every claim ` +
+        `line for that id (this round's claim, or an earlier round's if this pass followed a retry); ` +
+        `run \`git add -A -- <those files>\` (NEVER a bare \`git add -A\` with no pathspec) and then ` +
+        `\`git commit -m "<id>: <one-line summary>"\`, using this evidence for the message where useful: ` +
+        `${JSON.stringify(passed)}. One commit per id, never one commit for the whole round. If an id's ` +
+        `footprint claim is empty or missing, commit nothing for it and say so in your report rather ` +
+        `than guessing which files it touched.\n\n`
+      : '') +
     // TURN ECONOMY, stated first because it is the instruction most often ignored. Everything this
     // agent needs is already in this prompt; the measured failure mode is an agent that opens
     // progress.json and HANDOFF.md anyway to reconstruct context it was handed, then spends thirty

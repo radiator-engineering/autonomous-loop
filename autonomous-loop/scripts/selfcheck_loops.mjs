@@ -1093,11 +1093,17 @@ const SCENARIOS = {
     // `fails` goes to 1) and passes on its round-2 re-dispatch. The first work:r1 prompt must stay
     // byte-identical to before this change — no attempt has failed yet — and every prompt after a
     // failed attempt must carry the warning.
+    // Content updated by issue #8 subtask 2 (spec: verified-commits-design): with VERIFIED_COMMITS on
+    // (the default), the directive's WORDING changed from judgment ("git status", "no close line") to
+    // an unconditional reset — see `retryResetIsUnconditional` below for that exact text. What this
+    // scenario still proves, unchanged since subtask 1, is the shape every future wording must keep:
+    // RETRY: fires on every attempt after the first and NEVER on the first, and it still points the
+    // worker at footprint.jsonl for which files are its own.
     retryGetsTreeWarning:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
-                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:') && p.includes('no close line') && p.includes('git status')) &&
+                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:') && p.includes('footprint.jsonl')) &&
                        !((h.prompts['work:r1'] || [])[0] || '').includes('RETRY:') },
     // EVERY ATTEMPT WRITES DOWN WHAT IT WILL TOUCH BEFORE TOUCHING IT (spec: ownership footprints,
     // issue #8 subtask 1). The claim line survives a crash because appending it is the worker's FIRST
@@ -1120,6 +1126,54 @@ const SCENARIOS = {
                      expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
                        p.includes('footprint.jsonl') && p.includes('git status --porcelain') &&
                        p.includes('"Traps"') && p.includes('no claim covers') && p.includes('claimed by two different items')) },
+    // ADVANCE THE TREE ONLY THROUGH VERIFIED CHANGES (spec: verified commits, issue #8 subtask 2).
+    // r1 fails round 1's verify (nothing to commit yet) and passes round 2's — the SAME two-round
+    // shape `retryGetsTreeWarning` uses, so the round-1 ledger prompt and the round-2 one can be
+    // checked against each other rather than in isolation. Round 1 has NOTHING verified pass, so its
+    // ledger prompt must name no commit for r1 at all — that is `ledgerSkipsFailedItems` below. Round
+    // 2 verifies r1 pass, so ITS ledger prompt must instruct a commit scoped to r1's own claimed
+    // files, never a bare `git add -A` that would sweep in a neighbor's still-uncommitted work.
+    ledgerCommitsPassedItems:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => {
+                       const rounds = h.prompts['ledger'] || []
+                       const round2 = rounds[1] || ''
+                       return round2.includes('footprint.jsonl') && round2.includes('"r1"') &&
+                         round2.includes('git add -A -- ') && round2.includes('git commit') &&
+                         round2.includes('NEVER a bare')
+                     } },
+    // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to commit — its
+    // half-finished edits are exactly the leftovers the retry directive (below) now discards
+    // unconditionally, and a ledger step that committed them anyway would be committing an
+    // unverified attempt, defeating the entire point of "canonical artifact = last green commit".
+    ledgerSkipsFailedItems:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => {
+                       const round1 = (h.prompts['ledger'] || [])[0] || ''
+                       return !round1.includes('"r1"') || !round1.includes('git commit')
+                     } },
+    // THE RETRY WORKER'S LEFTOVER INSTRUCTION BECOMES UNCONDITIONAL. Once a verified pass is always a
+    // commit (the two scenarios above), nothing of value can be sitting uncommitted on an item's own
+    // claimed files, so the retry directive stops asking the worker to JUDGE each leftover ("either
+    // revert it or re-derive it") and instead tells it to reset unconditionally. Same two-round shape
+    // as `retryGetsTreeWarning`, whose byte-identity assertion (no attempt has failed yet ⇒ no RETRY:
+    // text) this extends rather than replaces.
+    retryResetIsUnconditional:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => {
+                       const prompts = h.prompts['work:r1'] || []
+                       const first = prompts[0] || ''
+                       const retry = prompts[1] || ''
+                       return !first.includes('RETRY:') &&
+                         retry.includes('RETRY:') && retry.includes('git checkout') &&
+                         retry.includes('git clean') && !retry.includes('either revert it or re-derive it')
+                     } },
   },
 }
 
