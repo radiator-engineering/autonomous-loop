@@ -31,17 +31,17 @@ const pass = (id, extra = {}) => ({ id, pass: true, evidence: 'ok', severity: 'n
 export function fixturesFor(mode) {
   const scn = { verify: id => (mode === 'explorer' ? pass(id, { bears_on: 'q1', finding: 'supports' }) : pass(id)) }
   if (mode === 'exhauster') scn.enumerate = () => ({ items: [{ id: 'i1', task: 't' }, { id: 'i2', task: 't' }, { id: 'i3', task: 't' }] })
-  if (mode === 'saturator') scn.find = (lens) => (lens === 'a' || !scn._seen ? (scn._seen = true, [{ where: 'c1', claim: 'x' }]) : [])
+  if (mode === 'saturator') scn.find = (lens) => (lens === 'a' || !scn._seen ? (scn._seen = true, { candidates: [{ where: 'c1', claim: 'x' }] }) : { candidates: [] })
   if (mode === 'converger') scn.critique = (n) => ({ total: 2, criteria: [
     { id: 'r1', region: 'r1', status: n === 1 ? 'fail' : 'pass', fix: 'f' },
     { id: 'r2', region: 'r2', status: 'pass', fix: 'f' }] })
   if (mode === 'explorer') {
     scn.charter = () => ({ subquestions: [{ id: 'q1', question: 's1' }, { id: 'q2', question: 's2' }] })
     scn.hypothesize = (n) => (n === 1
-      ? [{ id: 'e1', subq: 'q1', hypothesis: 'h', method: 'm' }]
-      : [{ id: 'ans', subq: 'q1', hypothesis: 'the answer', method: 'm', terminal: true }])
+      ? { experiments: [{ id: 'e1', subq: 'q1', hypothesis: 'h', method: 'm' }] }
+      : { experiments: [{ id: 'ans', subq: 'q1', hypothesis: 'the answer', method: 'm', terminal: true }] })
   }
-  if (mode === 'sentinel') scn.poll = (n) => (n === 1 ? [{ id: 'v1', invariant: 'inv', detail: 'd', severity: 'major' }] : [])
+  if (mode === 'sentinel') scn.poll = (n) => (n === 1 ? { violations: [{ id: 'v1', invariant: 'inv', detail: 'd', severity: 'major' }] } : { violations: [] })
   return scn
 }
 
@@ -62,9 +62,9 @@ export function spoofWorld(scn) {
     if (label === 'enumerate')         return scn.enumerate ? scn.enumerate() : { items: [] }
     if (label === 'charter')           return scn.charter ? scn.charter() : { subquestions: [] }
     if (label.startsWith('critique:')) return scn.critique ? scn.critique(n, label.slice(9)) : null
-    if (label.startsWith('find:'))     return scn.find ? scn.find(label.slice(5), n) : []
-    if (label === 'hypothesize')       return scn.hypothesize ? scn.hypothesize(n) : []
-    if (label === 'poll')              return scn.poll ? scn.poll(n) : []
+    if (label.startsWith('find:'))     return scn.find ? scn.find(label.slice(5), n) : { candidates: [] }
+    if (label === 'hypothesize')       return scn.hypothesize ? scn.hypothesize(n) : { experiments: [] }
+    if (label === 'poll')              return scn.poll ? scn.poll(n) : { violations: [] }
     if (label.startsWith('work:'))     return scn.work ? scn.work(label.slice(5), n) : 'done'
     if (label.startsWith('verify:'))   return scn.verify ? scn.verify(label.slice(7)) : null
     if (label === 'ledger') {
