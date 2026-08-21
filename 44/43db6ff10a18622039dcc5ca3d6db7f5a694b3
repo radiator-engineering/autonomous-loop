@@ -1,0 +1,36 @@
+docs/superpowers/specs/2026-08-21-ownership-footprint-design.md
+  s_ea64c4b449125a::t_ad05ed3fcde999 61
+  s_ea64c4b449125a::t_79831d9ad97402 54
+docs/superpowers/specs/2026-08-21-verified-commits-design.md
+  s_ea64c4b449125a::t_f5c482b6313d72 180-183
+  s_ea64c4b449125a::t_f7cb41a4fe7e16 1-179,184-205
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_fd4ae537569729 1129-1144,1146-1176
+  s_ea64c4b449125a::t_65f9c8cf7982fd 1096-1101,1106
+  s_ea64c4b449125a::t_e15e024a09f464 1145
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_9414f6c1927f9c 1657
+  s_ea64c4b449125a::t_7908a7c6493cca 1063-1066
+  s_ea64c4b449125a::t_f4a82514bdf927 1667-1686
+  s_ea64c4b449125a::t_15ddf002ef2377 95-103
+  s_ea64c4b449125a::t_f0f71747b948d0 975-980
+  s_ea64c4b449125a::t_29651b5e9a603f 1546-1548,1550-1564
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_f0bfc566881d43 295-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "4443db6ff10a18622039dcc5ca3d6db7f5a694b3",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
