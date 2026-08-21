@@ -270,6 +270,10 @@ counts. Same rule `stuckDirective` follows. A resumed run replays byte-identical
 so interpolating a clock here would re-pay for every agent in the run on every resume, in order to
 log the resume.
 
+The same discipline covers `retryDirective`: an item's second dispatch tells its worker the shared
+tree may still hold the dead attempt's half-finished edits and to git-status/diff before working, but
+a first attempt's prompt stays untouched.
+
 Because the agents write it, this is the source that works on **any** substrate, including a
 committed CI harness where no transcript exists.
 
