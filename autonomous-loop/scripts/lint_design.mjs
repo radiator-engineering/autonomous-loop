@@ -26,6 +26,9 @@ const L1_LINE_BUDGET = 250          // emitted lines one item may plausibly dema
 const L1_WHOLE_FILE = /\b(rewrite|regenerate|output|emit|produce) (the )?(entire|whole|full|complete)\b/i
 const L1_ITERATE = /\b(run (the )?tests?|iterate|repeat|until (it|they) pass)\b/i
 const L3_VISUAL = /\b(screenshot|capture|image|png|render|visual|pixel|browser)\b/i
+// L3_VISUAL is negation-blind on its own — "no VISUAL evidence is possible" reads as a visual
+// demand otherwise. Strip negation spans (through the next clause boundary) before testing.
+const L3_NEGATION = /\b(no|not|non|never|without)\b[^.;\n]*/gi
 const L4_TASTE = /\b(polished|beautiful|elegant|feels right|looks good|clean|delightful|high[- ]quality)\b/i
 const L4_GROUNDED = /(`[^`]+`|\bnpm |\bnode |\bpytest|\bexit 0|\bdiff\b|\.mjs\b|\.py\b|\bpx\b|[<>]=? ?\d)/
 const L5_ROLE = /\b(queue|backlog|count|source of truth|status file)\b/i
@@ -170,7 +173,8 @@ function lintL2(driverSrc, brief, measured, opts = {}) {
 // ---- L3: evidence contract (the only default hard fail) -----------------------------------------
 function lintL3(driverSrc, brief) {
   const evidenceBody = extractSection(brief, '## Evidence') || ''
-  const visual = L3_VISUAL.test(evidenceBody)
+  const evidenceBodyForVisualCheck = evidenceBody.replace(L3_NEGATION, ' ')
+  const visual = L3_VISUAL.test(evidenceBodyForVisualCheck)
   if (!visual) return { level: 'pass', reason: 'evidence contract is non-visual' }
 
   const imagesZero = /\bimages\s*:\s*0\b/.test(driverSrc)
@@ -283,6 +287,14 @@ function buildL1Fixture() {
   return { driverSrc: fillTemplate('exhauster'), brief, opts: { briefDir: dir }, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
 }
 
+// Not a red fixture: the intended NON-visual green path — a design that is coherently
+// evidence-free (BRIEF says so, driver's EVIDENCE_EVERY is 0) must stay all-pass, L3 included.
+// Regression for the negation-blind L3_VISUAL match on "no VISUAL evidence is possible".
+function buildL3GreenEvidenceEveryZeroFixture() {
+  const driverSrc = fillTemplate('exhauster').replace('const EVIDENCE_EVERY = 1', 'const EVIDENCE_EVERY = 0')
+  return { driverSrc, brief: GREEN_BRIEF, opts: {} }
+}
+
 function buildL3Fixture() {
   // The template has no `images:` knob, so inject a tier literal that carries one — the same shape
   // a real generation session would produce if it hand-rolled a mechanical-only verifier tier.
@@ -332,6 +344,18 @@ async function selfTest() {
   const greenResults = runLints(greenDriver, GREEN_BRIEF, greenMeasured, {})
   for (const [lint, r] of Object.entries(greenResults)) {
     check(r.level === 'pass', `green:${lint}`, `level=${r.level} reason=${r.reason}`)
+  }
+
+  // Regression: a coherently evidence-free design (EVIDENCE_EVERY=0 + a BRIEF that says so in
+  // words like "no visual evidence is possible") must not hard-fail L3 on the negation it contains.
+  {
+    const evidenceFreeGreen = buildL3GreenEvidenceEveryZeroFixture()
+    const measured = await measureDriver(evidenceFreeGreen.driverSrc)
+    check(measured !== null, 'green:evidenceFree:spoofable', 'EVIDENCE_EVERY=0 driver must still be spoofable')
+    const results = runLints(evidenceFreeGreen.driverSrc, evidenceFreeGreen.brief, measured, evidenceFreeGreen.opts)
+    for (const [lint, r] of Object.entries(results)) {
+      check(r.level === 'pass', `green:evidenceFree:${lint}`, `level=${r.level} reason=${r.reason}`)
+    }
   }
 
   const REDS = [
