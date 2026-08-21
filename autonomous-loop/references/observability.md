@@ -501,7 +501,7 @@ Each of these fails a check, not a review:
 
 ## What a round must capture
 
-`archetypes.md` says what goes in the slot; this says how to shoot it. Seven rules, and what actually
+`archetypes.md` says what goes in the slot; this says how to shoot it. Eight rules, and what actually
 enforces each:
 
 | # | Rule | Enforced by |
@@ -513,9 +513,10 @@ enforces each:
 | 5 | `commit` from `git rev-parse HEAD` in the process that produced the frame, never a filename or URL parameter | nothing; the board shows a missing sha as `commit unknown` |
 | 6 | Same captures every round, small — thumbnails and clips, not raw 4K | pruning caps disk, not size |
 | 7 | A browser-driving harness only ever drives a browser it started itself — own `user-data-dir`, own debug port, launched and killed by the script. An operator's already-running browser is never a CDP target | `scripts/check_harness.mjs` pins the script, not what it touches; `scripts/lint_design.mjs`'s L6 warns at design time on a capture plan that names attaching to an existing/running browser; and a capture that finds the browser's process id changed since its last call must report a **failed capture**, not a frame (`SKILL.md` Step 4) |
+| 8 | A harness claims one tab by URL prefix at startup and reuses it for every capture and every retry — it never opens a new tab per invocation, even inside a browser it owns | prompt discipline; `SKILL.md` Step 4 carries the incident and the fix, since owning the browser (rule 7) does not by itself stop a self-owned browser from accumulating its own tabs |
 
-`SKILL.md` Step 5 states these as prose and carries the incidents behind 2, 5 and 7. The enforcement
-column is the part you can act on: five of the seven are prompt discipline, so they hold only if your
+`SKILL.md` Step 5 states these as prose and carries the incidents behind 2, 5, 7 and 8. The enforcement
+column is the part you can act on: six of the eight are prompt discipline, so they hold only if your
 measure step's prompt names them.
 
 **Rules 1 and 6 are converger-shaped, and so is the filmstrip.** They assume one artifact re-shot

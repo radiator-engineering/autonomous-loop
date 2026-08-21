@@ -329,6 +329,15 @@ Seven gates, each fail-closed, each naming its own fix:
     green throughout. Two ordinary tabs in two separately-launched instances gets the same isolation
     without a shared browser ever entering the picture, and removes the need for browser contexts
     entirely.
+  - **A harness claims one tab and reuses it — it never opens one per invocation.** Owning its
+    browser (above) stops a harness from leaking into an operator's window, but a self-owned browser
+    can still leak into *itself*: a capture script that calls `new_tab(...)` on every invocation, and
+    on every retry, accumulates tabs the loop never looks at. Measured: over a 25-round run this left
+    hundreds of tabs open in the harness's own browser; eleven were still open when the operator
+    noticed mid-run and said so, after an unknown number had already been closed by hand. The fix is
+    to claim one tab by URL prefix at startup, reuse that tab for every subsequent capture and every
+    retry, and never call the open-a-new-tab path again for the life of the run. Two runs after the
+    in-place patch each left exactly one tab open and produced two distinct frames.
   - **A timeout is a failure.** The reason the breakage was silent is that the harness did not exit
     non-zero — it hung, and the runner answered *"moved to the background"*, which is a
     success-shaped result with no exit code in it. 20 of 31 measured invocations returned in under a
