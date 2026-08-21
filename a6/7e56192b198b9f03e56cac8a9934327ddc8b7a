@@ -1,0 +1,23 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_2a200f9758e680 371-375,377,379-387
+autonomous-loop/scripts/replay_gates.mjs
+  s_ea64c4b449125a::t_85466cf8259724 101-105
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_23bc68151360ac 1438-1451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "a67e56192b198b9f03e56cac8a9934327ddc8b7a",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
