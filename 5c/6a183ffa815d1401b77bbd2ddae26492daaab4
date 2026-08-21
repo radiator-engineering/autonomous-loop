@@ -1,0 +1,21 @@
+autonomous-loop/scripts/check_harness.mjs
+  s_ea64c4b449125a::t_ed156303eab236 47-50
+autonomous-loop/scripts/replay_gates.mjs
+  s_ea64c4b449125a::t_b3fbe4b2dff6e6 64-68,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5c6a183ffa815d1401b77bbd2ddae26492daaab4",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
