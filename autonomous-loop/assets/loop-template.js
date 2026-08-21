@@ -125,16 +125,16 @@ const SPEC = '<<SPEC>>'                   // converger: path to the FROZEN spec 
                                           // paraphrases is a bar that drifts, and drift is invisible
                                           // because the paraphrase always looks like the spec.
 
-// ---- EFFORT: the one knob that prices the whole run ------------------------------------------
-// A loop's cost is not one number, it is three that used to be set in three different places (or not
-// at all): which models run, how hard verification digs, and how often the run stops to photograph
-// itself. Operators asked for "make it cheaper" and had to hand-edit a tier map to get it, which is
-// both easy to get wrong and invisible afterwards — nothing recorded that a run had been detuned, so
-// a thrifty run and a thorough one produced ledgers that read identically.
+// ---- EFFORT: the one knob that prices the models ---------------------------------------------
+// A loop's model cost used to be a hand-edit of the tier map — easy to get wrong and invisible
+// afterwards, because nothing recorded that a run had been detuned, so a thrifty run and a thorough
+// one produced ledgers that read identically.
 //
-// One named knob, three derived settings, written into the brief and onto the board. The default is
-// `balanced`. Nothing in the KERNEL reads EFFORT: it resolves entirely here in Config, so the hashed
-// regions stay byte-identical across every setting and DESCENT is unaffected by how a run is priced.
+// One named knob resolves the whole tier map, written into the brief and onto the board (see `head`
+// below). The default is `balanced`. Nothing in the KERNEL reads EFFORT: it resolves entirely here in
+// Config, so the hashed regions stay byte-identical across every setting and DESCENT is unaffected by
+// how a run is priced. Evidence CADENCE is its own knob (`EVIDENCE_EVERY`, below), because how often a
+// run photographs itself is a fact about the WORK, not about how much you are willing to spend on it.
 const EFFORT = '<<EFFORT>>'               // 'thrifty' | 'balanced' | 'quality-first'
 
 // Measured, and this is why the knob is worth having rather than just telling people to use haiku:
@@ -144,23 +144,20 @@ const EFFORT = '<<EFFORT>>'               // 'thrifty' | 'balanced' | 'quality-f
 // reaching for this to make a slow loop fast should read that sentence twice and go tune the atom
 // instead — a smaller atom is the only thing that reliably shortens a round.
 const EFFORT_PLAN = {
+  // Verification never drops BELOW the worker's tier, at any setting. A verifier weaker than the
+  // agent it grades is not a cheaper loop, it is an ungrounded one — guardrail #1 with the teeth
+  // filed off — and it fails in the direction that looks like success.
   thrifty: {
     tier: { mechanical: { model: 'haiku', effort: 'low' }, work: { model: 'haiku' },
             verify: { model: 'sonnet' }, escalate: { model: 'sonnet', effort: 'high' } },
-    // Verification never drops BELOW the worker's tier, at any setting. A verifier weaker than the
-    // agent it grades is not a cheaper loop, it is an ungrounded one — guardrail #1 with the teeth
-    // filed off — and it fails in the direction that looks like success.
-    evidenceEvery: 3,   // capture on every 3rd round rather than every round
   },
   balanced: {
     tier: { mechanical: { model: 'haiku', effort: 'low' }, work: { model: 'sonnet' },
             verify: { model: 'sonnet' }, escalate: { model: 'opus', effort: 'high' } },
-    evidenceEvery: 1,
   },
   'quality-first': {
     tier: { mechanical: { model: 'sonnet', effort: 'low' }, work: { model: 'opus' },
             verify: { model: 'opus', effort: 'high' }, escalate: { model: 'opus', effort: 'max' } },
-    evidenceEvery: 1,
   },
 }
 // Fail LOUD, not to a default. A typo'd effort silently running `balanced` is a run whose cost the
@@ -168,8 +165,11 @@ const EFFORT_PLAN = {
 if (!EFFORT_PLAN[EFFORT]) throw new Error(`EFFORT must be one of ${Object.keys(EFFORT_PLAN).join(' | ')}, got '${EFFORT}'`)
 const TIER = EFFORT_PLAN[EFFORT].tier
 
-// How often the run stops to produce its hero capture. 1 = every round; 0 = this loop bears no
-// evidence at all and says so once, up front, instead of discovering it round by round.
+// How often the run stops to produce a capture. It governs BOTH capture paths on the same clock: the
+// per-item verifier capture (`captureClause`) and the ledger writer's hero capture (`writeLedger`),
+// so `0` disables collection everywhere rather than in one place. `n` = capture on rounds where
+// `round % n === 0`; `0` = this loop bears no evidence at all and says so once, up front, instead of
+// discovering it round by round.
 //
 // Priced from the corpus: a real capture cost a mean of 69 seconds (11 runs, 19.6s-140.2s) and 12.4%
 // of one run's wall clock. That is worth paying for a round that CHANGED something a person can see,
@@ -177,6 +177,9 @@ const TIER = EFFORT_PLAN[EFFORT].tier
 // the sharp one is per-item (`bearsEvidence` on a queue item), because "which rounds are worth
 // photographing" is a fact about the WORK, not about the calendar.
 const EVIDENCE_EVERY = <<EVIDENCE_EVERY>>
+// True on a round the run should photograph: cadence must be enabled and this round must land on it.
+// One helper so the hero capture and the per-item capture cannot drift onto different clocks.
+function capturesThisRound(round) { return EVIDENCE_EVERY > 0 && round % EVIDENCE_EVERY === 0 }
 
 // ---- Knob check ---------------------------------------------------------------------------
 // Presence is not a value. A filled-in but MEANINGLESS numeric knob reads as a filled template and
@@ -291,7 +294,7 @@ const VERDICT_KEYS = Object.keys(VERDICT_SCHEMA.properties)
 // driver state and removes the only honest reason to open the old file.
 const LEDGER_SCHEMA      = { type: 'object', additionalProperties: false, required: ['hero', 'handoff'], properties: { hero: { type: 'string', enum: ['artifact', 'none', 'absent'] }, handoff: { type: 'string', enum: ['written', 'absent'] }, traps: { type: 'array', items: { type: 'string' } } } }
 // THE AUDIT. One cheap agent, after the last round and before the terminal status is computed, that
-// READS the ledger dir and answers about the files. Deliberately TINY — four scalars — because it is
+// READS the ledger dir and answers about the files. Deliberately TINY — five scalars — because it is
 // the only thing between a reporting gate and the agent it grades, and every field it carries is a
 // field somebody could be tempted to reason from instead of measure. `handoffRound` is what makes
 // staleness detectable at all: a handoff describing round 3 and one describing round 40 are the same
@@ -315,7 +318,7 @@ const CRITERION_STATUSES = new Set(CRITERIA_SCHEMA.properties.criteria.items.pro
 // `bearsEvidence` is declared but NOT required: a queue written before this field existed still
 // enumerates, and `captureClause` treats a missing value as "capture it" — the safe direction, since
 // the cost of a redundant frame is 69 seconds and the cost of a missing one is an unwitnessed run.
-const QUEUE_SCHEMA       = { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, task: { type: 'string' }, bearsEvidence: { type: 'boolean' } } } } } }
+const QUEUE_SCHEMA       = { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', required: ['id', 'task'], properties: { id: { type: 'string' }, task: { type: 'string' }, bearsEvidence: { type: 'boolean' } } } } } }
 const CANDIDATES_SCHEMA  = { type: 'object', required: ['candidates'], properties: { candidates: { type: 'array', items: { type: 'object' } } } }
 const EXPERIMENTS_SCHEMA = { type: 'object', required: ['experiments'], properties: { experiments: { type: 'array', items: { type: 'object' } } } }
 // THE EXPLORER'S CHARTER — the one thing that gives an open question a FINITE atom space.
@@ -544,12 +547,15 @@ const MODES = {
         return
       }
       // An item with no string id is an unnamed mandate: it keys nothing, yet it would count toward
-      // `total` and be "drained" like any other. Same treatment as the dead enumerate — a blocker, so
-      // the queue can still be worked while the run can never report `drained` over a partial read.
-      const items = raw.filter(it => it && typeof it.id === 'string')
+      // `total` and be "drained" like any other. An item with no non-empty `task` is the same defect
+      // one step in: it keys, but the worker is handed `undefined` for what to do and can return a
+      // passing verdict for unspecified work. Both are malformed the same way — same treatment as the
+      // dead enumerate, a blocker, so the queue can still be worked while the run can never report
+      // `drained` over a partial read.
+      const items = raw.filter(it => it && typeof it.id === 'string' && typeof it.task === 'string' && it.task.trim() !== '')
       if (items.length !== raw.length) {
         state.blocked.push({ id: 'enumerate', severity: 'blocker',
-          evidence: `${raw.length - items.length} unnamed item(s) in ${SOURCE}` })
+          evidence: `${raw.length - items.length} malformed item(s) in ${SOURCE} (missing id or task)` })
       }
       state.total = items.length
       for (const it of items) state.open.set(it.id, { ...it, tries: 0 })
@@ -1252,10 +1258,12 @@ const status =
 
 const fin = await agent(
   `Three edits, then stop.\n` +
-  `1) In ${LEDGER}, set "status" to "${status}" and "hitBackstop" to ${hitBackstop}.\n` +
+  `1) In ${LEDGER}, set "status" to "${status}", "hitBackstop" to ${hitBackstop}, and "heroLog" to ` +
+  `${JSON.stringify(state.heroLog)} (the complete per-round hero history, so a replay of this finished ` +
+  `ledger sees the last round's capture too).\n` +
   `2) Write this compact JSON line to ${RUNS_LOG} (create the file if missing). If a line there ` +
   `already has "run_id":"${RUN_ID}", REPLACE that line in place; otherwise append. One line per run:\n` +
-  `{"run_id":"${RUN_ID}","target":"${TARGET}","mode":"${MODE}","status":"${status}",` +
+  `{"run_id":"${RUN_ID}","target":"${TARGET}","mode":"${MODE}","effort":"${EFFORT}","status":"${status}",` +
   `"rounds":${state.round},"confirmed":${state.confirmed.length},"blocked":${openBlockers(state).length},` +
   `"hitBackstop":${hitBackstop}}\n` +
   // The run is over, so the pickup document has to stop describing a run in flight. FINALIZE it in
@@ -1268,11 +1276,21 @@ const fin = await agent(
   `same round-first shape every in-flight rewrite uses, so a reader never has to work out which file ` +
   `they are holding — then: terminal status "${status}", ${state.confirmed.length} confirmed, ` +
   `${openBlockers(state).length} open blocker(s)${hitBackstop ? ', RODE THE RUNAWAY BACKSTOP' : ''}. ` +
-  (status === 'undocumented' || status === 'unwitnessed'
+  (status === 'undocumented' || status === 'unwitnessed' || status === 'unpointed'
     ? `This status means the run verified its atoms but failed a reporting gate — say so plainly in ` +
       `"Where it stands" rather than presenting the confirmed count as a clean finish. `
     : '') +
-  (audit !== null && audit.hero === 'artifact'
+  // The jammed camera gets its OWN instruction, and it is the opposite of the gallery one below: do
+  // NOT tell the next agent to promote a frame, because the frames are the problem — the harness
+  // emitted duplicates and every round since it broke is ungated. Point at the harness, not the wall.
+  (status === 'evidence_regressed'
+    ? `The evidence harness REGRESSED: ${audit ? audit.captures : '?'} frame(s) on disk but only ` +
+      `${audit ? audit.distinctCaptures : '?'} distinct — it emitted duplicate captures, so every round ` +
+      `since it broke is ungated. Under "What to do next", tell the next agent to REPAIR the capture ` +
+      `harness and re-pin it (\`node ${SKILL_DIR}/scripts/check_harness.mjs ${LEDGER_DIR} --accept\` once a ` +
+      `human has looked), NOT to promote one of the existing frames — they are stale. Say this plainly ` +
+      `in "Where it stands". `
+    : audit !== null && audit.hero === 'artifact'
     ? `A capture exists: read the top-level "hero" object in ${LEDGER} and add a one-line pointer to ` +
       `its path (and its "before", if set) under "Where it stands". Do NOT re-derive or guess the path. `
     : audit !== null && audit.captures > 0
@@ -1375,9 +1393,8 @@ function usable(v) {
 //   * SAY WHICH ROUND, AND CHECK THE FRAME IS NEW. Re-emitting an earlier frame is the failure that
 //     hid for five rounds, because a directory that keeps growing looks like a working camera.
 function captureClause(item, state) {
-  if (EVIDENCE_EVERY === 0) return ''                                  // declared evidence-free up front
   if (item && item.bearsEvidence === false) return ''                  // this item changes nothing visible
-  if (state && state.round % EVIDENCE_EVERY !== 0) return ''           // off-cadence round
+  if (!capturesThisRound(state ? state.round : 0)) return ''           // evidence-free, or an off-cadence round
   return ` BEFORE capturing, run \`node ${SKILL_DIR}/scripts/check_harness.mjs ${LEDGER_DIR}\`. It holds the ` +
     `evidence harness still the way DESCENT holds the kernel still: first sight of a script is recorded, ` +
     `every later round must hash the same. If it exits non-zero the harness changed after it was pinned — ` +
@@ -1420,7 +1437,10 @@ function witnessVerdict(audit, everCaptured) {
   // empty-state frame from round 1, while the board read 7 of 9 confirmed and hasBlocker false. A
   // board POINTING at dock-8.png would have been the worst reading of all — a green run leading with
   // a picture of nothing having happened — which is why `artifact` does not get to answer first.
-  if (audit.captures >= 2 && audit.distinctCaptures === 1) return 'regressed'
+  // ANY duplicate is a jam, not only a gallery that is all one image: the capture contract rejects a
+  // frame identical to any earlier one, so a gallery of A, B, A (3 frames, 2 distinct) already broke
+  // it — a harness that re-emitted A once will do it again. `< captures`, not `=== 1`.
+  if (audit.captures >= 2 && audit.distinctCaptures < audit.captures) return 'regressed'
   if (audit.hero === 'artifact') return 'witnessed'
   if (everCaptured) return 'regressed'                                      // it worked once; it does not now
   if (audit.hero === 'none' && audit.captures === 0) return 'witnessed'     // honestly nothing to show
@@ -1524,7 +1544,16 @@ async function writeLedger(state) {
   const h = state.history[state.history.length - 1] || { round: state.round }
   const head = {
     target: TARGET, mode: MODE, status: 'running', pass_threshold: PASS_THRESHOLD,
+    // How the run was priced. On the board so a `thrifty` run and a `quality-first` one no longer read
+    // identically after launch, and in the run summary below for the same reason across runs.
+    effort: EFFORT, evidence_every: EVIDENCE_EVERY,
     confirmed: state.confirmed.length, open: state.open.size, blocked: openBlockers(state).length,
+    // The per-round hero self-report, PERSISTED — not just held in `state.heroLog`. It is what lets a
+    // finished ledger be replayed (scripts/replay_gates.mjs reads `heroLog`): a run that captured in an
+    // early round and lost its pointer later must replay as `regressed`, not `unpointed`, and that turn
+    // is only knowable from the history. Lags this round by one (the current entry is pushed after the
+    // writer returns, below), which does not matter to "did it EVER capture".
+    heroLog: state.heroLog,
     // The previous round's self-report, on the board. It gates nothing (see the end of this function);
     // it is here so a watcher can compare what the writer SAID with what the terminal audit FOUND.
     last_reported: state.reported,
@@ -1554,11 +1583,21 @@ async function writeLedger(state) {
     `3) Append this entry to the "rounds" array: ${JSON.stringify(h)}.\n` +
     (newClaims.length ? `4) Append these grounded claims (one JSON object per line) to ${LEDGER_DIR}/claims.jsonl: ${JSON.stringify(newClaims)}.\n` : '') +
     `Reference any per-round evidence you drop under ${LEDGER_DIR}/artifacts/ named r${state.round}-* in the round entry. ` +
-    `The board LEADS WITH THE PICTURE: set the top-level "hero" to this round's headline capture — ` +
-    `{path, label, commit (\`git rev-parse HEAD\` from the RUNNING code, never a filename or URL param), ` +
-    `before: round 1's capture in the same framing, framing: "artifacts/framing.json" written once and ` +
-    `read back, never re-derived}. If a picture is impossible, set hero.type="none" with a note naming ` +
-    `what would be needed; never leave the slot empty. ` +
+    // The hero capture obeys the SAME cadence clock as the per-item capture (`EVIDENCE_EVERY`), so a
+    // run declared evidence-free (0) never manufactures a hero, and an off-cadence round leaves the
+    // last real picture in place rather than forcing a fresh one the work did not earn.
+    (EVIDENCE_EVERY === 0
+      ? `This loop is EVIDENCE-FREE (EVIDENCE_EVERY=0): do not capture. Set the top-level "hero" to ` +
+        `type="none" with a note saying this run bears no evidence by declaration; never leave the slot empty. `
+      : capturesThisRound(state.round)
+        ? `The board LEADS WITH THE PICTURE: set the top-level "hero" to this round's headline capture — ` +
+          `{path, label, commit (\`git rev-parse HEAD\` from the RUNNING code, never a filename or URL param), ` +
+          `before: round 1's capture in the same framing, framing: "artifacts/framing.json" written once and ` +
+          `read back, never re-derived}. If a picture is impossible, set hero.type="none" with a note naming ` +
+          `what would be needed; never leave the slot empty. `
+        : `This is an OFF-CADENCE round (EVIDENCE_EVERY=${EVIDENCE_EVERY}): do not capture a new hero. ` +
+          `LEAVE the existing top-level "hero" in ${LEDGER} exactly as it stands; if the slot is still ` +
+          `empty because no round has captured yet, set hero.type="none" with a note. Never leave it empty. `) +
     `Then REPORT WHAT YOU ACTUALLY WROTE into the hero slot — "artifact" if it names a real capture ` +
     `file, "none" if you set type="none" WITH a non-empty note, "absent" if you left it empty or could ` +
     `not write it. Answer for the file as it stands on disk after your edit, not for what you intended. ` +
@@ -1618,11 +1657,14 @@ async function writeLedger(state) {
   // this answers "did this run EVER have a picture?" — and only the second question can tell an
   // evidence harness that regressed from one that was never possible.
   state.heroLog.push({ round: state.round, hero: state.reported.hero })
-  // Carried only if the writer returned a usable list — a dead or confused writer must never be able
-  // to ERASE the traps, which is why this replaces the list rather than merging, but only on a real
-  // array. Bounded on both axes so the one deliberate exception to kernel #6 stays small enough to
-  // keep being an exception: a run that has learned 40 traps has a handoff nobody will read.
-  if (Array.isArray(r?.traps) && r.traps.length) {
-    state.traps = r.traps.filter(t => typeof t === 'string' && t.trim()).slice(0, 20).map(t => t.slice(0, 300))
+  // MERGED, never replaced. The handoff contract is that every trap already learned carries into
+  // every later round; a writer that returns a partial list — dropping earlier entries it did not
+  // bother to echo — must not be able to erase them from driver state. So union the sanitized return
+  // ONTO what we already carried, keeping first-seen order, then bound. `null`/non-array leaves the
+  // carried list untouched (a dead writer erases nothing). Bounded on both axes so the one deliberate
+  // exception to kernel #6 stays small: a run that has learned 40 traps has a handoff nobody will read.
+  if (Array.isArray(r?.traps)) {
+    const returned = r.traps.filter(t => typeof t === 'string' && t.trim()).map(t => t.slice(0, 300))
+    state.traps = [...new Set([...state.traps, ...returned])].slice(0, 20)
   }
 }

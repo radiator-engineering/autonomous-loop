@@ -400,13 +400,14 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
   `runs.jsonl`, `claims.jsonl`, capture and framing discipline, artifact pruning, and a triage table
   for reading a board. `references/archetypes.md` says what each archetype puts in the slot.
 - **Knobs (confirm at launch, use the default if the user doesn't care):**
-  - *Effort* (`EFFORT`, default `balanced`): the one knob that prices the run. `thrifty` |
-    `balanced` | `quality-first`. It resolves the model tier map and the evidence cadence together,
-    in Config, above every hashed region — so detuning a run never touches the kernel and never
-    changes what DESCENT checks. Previously this was a hand-edit of the tier map, which meant a
-    detuned run and a thorough one produced ledgers that read identically; now the setting is named,
-    recorded, and on the board. `quality-first` also scales up panel size and batch size — never a
-    round count; that is its own parameter, below.
+  - *Effort* (`EFFORT`, default `balanced`): the one knob that prices the models. `thrifty` |
+    `balanced` | `quality-first`. It resolves the whole model tier map in Config, above every hashed
+    region — so detuning a run never touches the kernel and never changes what DESCENT checks.
+    Previously this was a hand-edit of the tier map, which meant a detuned run and a thorough one
+    produced ledgers that read identically; now the setting is named, recorded in the ledger head and
+    the run summary, and on the board. Evidence *cadence* is its own knob (`EVIDENCE_EVERY`, below),
+    not derived from effort — how often a run photographs itself is a fact about the work, not about
+    how much you are willing to spend.
     **Do not reach for `thrifty` to make a slow loop fast.** Measured across eight runs: 61% of a
     worker's tokens go to orientation before its first edit, but repo reading is 2.5% of wall-clock.
     Effort buys tokens; it buys almost no time. Wall-clock lives in tests, external services and
@@ -414,10 +415,12 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
     One floor holds at every setting: **verification never drops below the worker's tier.** A
     verifier weaker than the agent it grades is not a cheaper loop, it is an ungrounded one — and it
     fails in the direction that looks like success.
-  - *Evidence cadence* (`EVIDENCE_EVERY`, default `1`): how many rounds between hero captures. `0`
-    declares up front that this loop bears no evidence, which is a legitimate and common shape —
-    three of five measured runs were text-only — and saying it once beats discovering it round by
-    round. Priced: a real capture cost a mean of 69 seconds and 12.4% of one run's wall clock.
+  - *Evidence cadence* (`EVIDENCE_EVERY`, default `1`): how many rounds between captures. It drives
+    both capture paths on one clock — the ledger writer's hero capture and the per-item verifier
+    capture — so `0` disables collection everywhere at once rather than in one place. `0` declares up
+    front that this loop bears no evidence, which is a legitimate and common shape — three of five
+    measured runs were text-only — and saying it once beats discovering it round by round. Priced: a
+    real capture cost a mean of 69 seconds and 12.4% of one run's wall clock.
     The sharper control is **per item**: an exhauster's queue items carry `bearsEvidence`, declared at
     enumeration. Set it false for anything that changes nothing a person could see — a pure refactor,
     an internal seam, a rename, a test-only change. This is a correctness knob more than a cost one:

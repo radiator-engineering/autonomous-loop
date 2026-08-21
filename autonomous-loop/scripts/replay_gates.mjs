@@ -53,10 +53,21 @@ function auditOf(dir) {
   const hp = join(dir, 'HANDOFF.md')
   const ht = existsSync(hp) ? readFileSync(hp, 'utf8') : ''
   const m = ht.match(/Round\s+(\d+)/)
-  const heroType = (pj.hero || {}).type
+  // Mirror the PRODUCTION audit, which classifies by what is on disk, not by a renderer `type`. A real
+  // hero is written as `{path, label, ...}` with NO `type:'artifact'` field, so keying off `type` would
+  // misread every genuine capture as `absent` and could label a successful run `regressed`. So: a hero
+  // whose `path` names a file that exists is `artifact`; an explicit `type:'none'` (other than the
+  // seeded "No capture yet." placeholder, which means nothing was ever produced) is `none`; anything
+  // else is `absent`.
+  const hero = pj.hero || {}
+  const heroFile = typeof hero.path === 'string' ? join(dir, hero.path) : null
+  const seededNone = hero.type === 'none' && /no capture yet/i.test(hero.note || '')
+  const heroClass = heroFile && existsSync(heroFile) ? 'artifact'
+    : (hero.type === 'none' && !seededNone) ? 'none'
+    : 'absent'
   return {
     audit: {
-      hero: heroType === 'artifact' ? 'artifact' : heroType === 'none' ? 'none' : 'absent',
+      hero: heroClass,
       handoff: ht ? 'complete' : 'absent',
       handoffRound: m ? Number(m[1]) : -1,
       captures: files.length,
@@ -84,6 +95,7 @@ const CASES = [
   ['jammed camera: 4 frames, 1 image',             A('none', 4, 1),         false, 'regressed'],
   ['jammed camera outranks a pointed frame',       A('artifact', 4, 1),     false, 'regressed'],
   ['two identical frames is already jammed',       A('none', 2, 1),         false, 'regressed'],
+  ['partial duplicate A,B,A is jammed',            A('artifact', 3, 2),     false, 'regressed'],
   ['one frame is not yet evidence of a jam',       A('none', 1, 1),         false, 'unpointed'],
   ['reported a capture, now points at none',       A('none', 3, 3),         true,  'regressed'],
   ['reported a capture and still points at one',   A('artifact', 3, 3),     true,  'witnessed'],

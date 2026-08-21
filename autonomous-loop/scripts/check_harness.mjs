@@ -44,12 +44,33 @@ for (const f of readdirSync(dir).sort()) {
   const full = join(dir, f)
   let st; try { st = statSync(full) } catch { continue }
   if (!st.isFile() || EXCLUDE.test(f)) continue
+  const body = readFileSync(full)
+  // A harness is anything that can RUN: marked executable, a known script extension, OR a shebang.
+  // The shebang catch matters because a `capture.bash` invoked as `bash capture.bash` is neither
+  // executable nor matched by RUNNABLE, and would otherwise slip the pin entirely.
   const executable = (st.mode & 0o111) !== 0
-  if (!executable && !RUNNABLE.test(f)) continue
-  current[f] = createHash('sha256').update(readFileSync(full)).digest('hex').slice(0, 16)
+  const hasShebang = body.length >= 2 && body[0] === 0x23 && body[1] === 0x21  // "#!"
+  if (!executable && !RUNNABLE.test(f) && !hasShebang) continue
+  current[f] = createHash('sha256').update(body).digest('hex').slice(0, 16)
 }
 
-const pinned = existsSync(PIN) ? JSON.parse(readFileSync(PIN, 'utf8')).files || {} : {}
+// A pin that exists but will not parse is not "no pin" — treating it as empty during verification
+// would let a truncated or clobbered pin read as first sight and pass. So: fail closed on verify, and
+// let ONLY `--accept` repair it (that is the deliberate re-pin path a human has just looked at).
+let pinned = {}
+if (existsSync(PIN)) {
+  try {
+    pinned = JSON.parse(readFileSync(PIN, 'utf8')).files || {}
+  } catch {
+    if (!accept) {
+      console.error(`HARNESS PIN UNREADABLE — ${PIN} exists but is not valid JSON.`)
+      console.error('A corrupt pin cannot certify the harness, so this fails closed. If the harness is')
+      console.error(`known-good, re-pin it deliberately:\n  node ${process.argv[1]} ${dir} --accept`)
+      process.exit(1)
+    }
+    // --accept: fall through with an empty baseline so the re-pin can rebuild it from current contents.
+  }
+}
 const added = Object.keys(current).filter(f => !(f in pinned))
 const changed = Object.keys(current).filter(f => f in pinned && pinned[f] !== current[f])
 const gone = Object.keys(pinned).filter(f => !(f in current))

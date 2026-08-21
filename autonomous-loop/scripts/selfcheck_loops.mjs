@@ -372,6 +372,15 @@ const SCENARIOS = {
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
                      audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 4, distinctCaptures: 1 }),
                      expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
+    // A PARTIALLY duplicated gallery — three frames, two distinct (A, B, A). Not every frame is one
+    // image, so a `distinctCaptures === 1` test would wave it through; but the capture contract rejects
+    // a frame identical to ANY earlier one, so a harness that re-emitted A once has already broken and
+    // will again. `distinctCaptures < captures` is the test, and this is the case that reds if it is
+    // ever narrowed back to `=== 1`.
+    heroPartialDuplicate:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 3, distinctCaptures: 2 }),
+                     expect: r => r.status === 'evidence_regressed' && r.converged === false && r.confirmed === 3 },
     // The other half, and it is what keeps the case above from being satisfiable by a gate that simply
     // stopped believing `none`: the same run with an EMPTY directory converges. A loop that genuinely
     // cannot produce a picture is still allowed to say so and finish.
@@ -465,6 +474,13 @@ const SCENARIOS = {
     // reported a queue it never read as fully worked. The unnamed item is recorded the same way a dead
     // enumerate is: a blocker, so the real items still get worked and `drained` stays unreachable.
     malformedQueue:{ enumerate: () => ({ items: [{ id: 'i1', task: 't' }, { task: 't' }] }), verify: id => pass(id),
+                     expect: r => r.status === 'blocked' && r.converged === false &&
+                       r.blocked === 1 && r.confirmed === 1 },
+    // The same defect one step in: a well-formed id with NO task. It keys fine, so the old filter
+    // admitted it, and then `workerPrompt` handed the worker `undefined` for what to do — unspecified
+    // work that a lax verifier can pass. Rejected the same way the id-less item is: a blocker, so the
+    // run cannot report `drained` over a queue item nobody could act on.
+    tasklessQueue: { enumerate: () => ({ items: [{ id: 'i1', task: 't' }, { id: 'i2' }] }), verify: id => pass(id),
                      expect: r => r.status === 'blocked' && r.converged === false &&
                        r.blocked === 1 && r.confirmed === 1 },
     // A verifier that REFUSES in a shape the kernel cannot read. `{pass:'no'}` is truthy and `v.pass`
