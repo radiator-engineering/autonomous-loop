@@ -318,12 +318,25 @@ Seven gates, each fail-closed, each naming its own fix:
     before every capture. A changed harness is not automatically *wrong*, it is automatically
     **ungated**: every round since the edit produced evidence nobody checked, which is a blocker, not
     a note. Re-pin deliberately with `--accept` once a human has looked.
+  - **A harness only ever drives a browser it started itself.** Its own `--user-data-dir`, its own
+    `--remote-debugging-port`, launched and killed by the script. An operator's already-running
+    browser — reached by attaching to its debug port, or by any `Target.createBrowserContext` /
+    `Target.disposeBrowserContext` trick for cheap multi-session isolation inside one shared instance
+    — is never a CDP target. Measured: a harness reached for the operator's own daily Chrome over its
+    remote-debugging port to fake two signed-in profiles side by side, and the browser segfaulted five
+    times in twelve minutes (`EXC_BAD_ACCESS`, freed-memory poison in the crash codes — a
+    use-after-free) while every CDP call returned normally, nothing timed out, and the board stayed
+    green throughout. Two ordinary tabs in two separately-launched instances gets the same isolation
+    without a shared browser ever entering the picture, and removes the need for browser contexts
+    entirely.
   - **A timeout is a failure.** The reason the breakage was silent is that the harness did not exit
     non-zero — it hung, and the runner answered *"moved to the background"*, which is a
     success-shaped result with no exit code in it. 20 of 31 measured invocations returned in under a
     tenth of a second and the run called every one of them fine. Any capture path must treat a
-    timeout, a backgrounded command, a missing sidecar, or a frame identical to an existing one as a
-    **failed capture**, and say so in the verdict.
+    timeout, a backgrounded command, a missing sidecar, a frame identical to an existing one, or a
+    browser process id that changed since the harness's last call as a **failed capture**, and say so
+    in the verdict — a frame taken across a browser restart is not obviously wrong by inspection,
+    which is exactly what let the crash above run for twelve minutes before anyone noticed.
 - **FILLED** — no unfilled `<<MARKER>>` survives. An unfilled knob either crashes at startup or,
   worse, reads as a number and silently disarms a predicate.
 - **PARSES** — the driver **compiles**, and every name it reads is bound somewhere in the file.
