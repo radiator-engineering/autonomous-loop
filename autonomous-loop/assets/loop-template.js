@@ -1304,6 +1304,10 @@ const fin = await agent(
         `none of them, which is why this run is not witnessed. Say so in one line under "Where it ` +
         `stands" and name the directory, so the next agent can promote one. `
       : `No capture was produced this run; say so in one line under "Where it stands". `) +
+  `Reconcile ${LEDGER_DIR}/footprint.jsonl (skip this if the file is absent, and say so in one "Traps" ` +
+    `line) against the working tree's changed files (\`git status --porcelain\`): under "Traps", add ` +
+    `one line per changed file no claim covers, and one line per file claimed by two different items. ` +
+    `Cite file paths only; do not paste diffs. ` +
   `Carry "Traps" forward unchanged plus anything the ending taught. Keep the whole file under ~150 ` +
   `lines and cite paths instead of pasting content.\n` +
   `Return {"finalized": true} only if ALL THREE edits landed on disk; {"finalized": false} if any of ` +
@@ -1507,7 +1511,10 @@ function retryDirective(id) {
   // attempt behind it — the exact moment the shared tree may hold that attempt's unfinished edits.
   if (!((state.fails.get(id) || 0) > 0)) return ''
   return `\n\nRETRY: a previous attempt at this item failed, and the working tree may still hold its ` +
-    `half-finished edits. Before you work, run git status and git diff on the files this item touches. ` +
+    `half-finished edits. Read ${LEDGER_DIR}/footprint.jsonl and find this item's lines first: a ` +
+    `trailing claim line with no close line after it is the attempt that died mid-work, and its ` +
+    `"files" list is where to look; a closed attempt the verifier failed names its files the same way. ` +
+    `Before you work, run git status and git diff on the files this item touches. ` +
     `For each leftover change, either revert it or re-derive it and deliberately adopt it. ` +
     `Never let an inherited edit satisfy the done-criterion unexamined.`
 }

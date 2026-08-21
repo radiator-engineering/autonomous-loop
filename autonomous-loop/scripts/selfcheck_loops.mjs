@@ -1082,7 +1082,7 @@ const SCENARIOS = {
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
-                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:')) &&
+                     expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:') && p.includes('no close line')) &&
                        !((h.prompts['work:r1'] || [])[0] || '').includes('RETRY:') },
     // EVERY ATTEMPT WRITES DOWN WHAT IT WILL TOUCH BEFORE TOUCHING IT (spec: ownership footprints,
     // issue #8 subtask 1). The claim line survives a crash because appending it is the worker's FIRST
@@ -1093,6 +1093,12 @@ const SCENARIOS = {
                      expect: (r, h) => (h.prompts['work:r1'] || []).length > 0 &&
                        (h.prompts['work:r1'] || []).every(p =>
                          p.includes('footprint.jsonl') && p.includes('"event":"claim"') && p.includes('"event":"close"')) },
+    // The finalize agent reconciles claimed footprints against what actually changed, and surfaces
+    // unclaimed edits and cross-item collisions under HANDOFF's "Traps" — surface, don't gate.
+    finalizeReconcilesFootprint:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
+                       p.includes('footprint.jsonl') && p.includes('git status --porcelain')) },
   },
 }
 
