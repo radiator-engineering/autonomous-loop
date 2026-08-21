@@ -982,9 +982,10 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   //    strong tier; a stuck item also gets the change-approach directive appended to its prompt.
   //    An item with a prior failed attempt also gets the dirty-tree warning, since its retry worker
   //    starts in the same shared tree the dead attempt half-edited.
+  //    Every worker also claims its footprint (files it will touch) before editing — see footprintDirective.
   phase('Work')
   const worked = await parallel(batch.map(item => () =>
-    agent(mode.workerPrompt(item, state) + retryDirective(item.id) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
+    agent(mode.workerPrompt(item, state) + footprintDirective(item) + retryDirective(item.id) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
       { ...((item.severity === 'blocker' || state.escalate.has(item.id) || isStuck(item.id)) ? TIER.escalate : TIER.work),
         phase: 'Work', label: `work:${item.id}` })
       .then(out => ({ item, out }))
@@ -1520,6 +1521,21 @@ function stuckDirective(id) {
     `(a) does the INPUT this code needs actually exist, or is it being synthesized? ` +
     `(b) can the INSTRUMENT disagree with reality, or does it read the same record it certifies? ` +
     `(c) is the fix landing in a file the RUNNING artifact never loads (a stale vendored build)?`
+}
+function footprintDirective(item) {
+  // Constant for a given item — no round number, no attempt counter, no clock — for the same reason
+  // activityDirective is constant per (phase, label): a resumed run replays byte-identical prompts
+  // from cache, and a failing item's later attempts stay byte-identical to each other. The worker
+  // stamps ts itself, exactly as the activity log works. The claim is the FIRST act so that an
+  // attempt that dies mid-work still leaves behind which files it meant to touch; a trailing claim
+  // with no close is how the retry learns its predecessor died and where to look.
+  return `\n\nFOOTPRINT (bookkeeping, first and last actions; not part of the task, never let it ` +
+    `change your answer): BEFORE your first edit, append one line to ${LEDGER_DIR}/footprint.jsonl ` +
+    `(create it if missing): {"ts":"<ISO-8601 now>","item":"${item.id}","event":"claim",` +
+    `"files":[<the file paths you intend to edit>]}. If your scope grows mid-work, append another ` +
+    `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":"${item.id}",` +
+    `"event":"close","status":"done"|"noop"|"blocked","note":"<one line: where this attempt ended>"}. ` +
+    `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
 }
 function activityDirective(phase, label) {
   // Mid-round visibility, paid for by agents that were going to run anyway. The driver has no

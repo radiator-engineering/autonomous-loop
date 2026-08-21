@@ -1084,6 +1084,15 @@ const SCENARIOS = {
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
                      expect: (r, h) => (h.prompts['work:r1'] || []).slice(1).some(p => p.includes('RETRY:')) &&
                        !((h.prompts['work:r1'] || [])[0] || '').includes('RETRY:') },
+    // EVERY ATTEMPT WRITES DOWN WHAT IT WILL TOUCH BEFORE TOUCHING IT (spec: ownership footprints,
+    // issue #8 subtask 1). The claim line survives a crash because appending it is the worker's FIRST
+    // act; the close line is its last. The driver interpolates nothing that varies per attempt, so a
+    // failing item's later prompts stay byte-identical to each other — the stuck scenario holds.
+    workClaimsFootprint:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['work:r1'] || []).length > 0 &&
+                       (h.prompts['work:r1'] || []).every(p =>
+                         p.includes('footprint.jsonl') && p.includes('"event":"claim"') && p.includes('"event":"close"')) },
   },
 }
 
