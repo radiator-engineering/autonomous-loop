@@ -124,7 +124,7 @@ The tests run in this order, and the order is the whole design (`witnessVerdict`
 
 | # | Audit shape | Status | What it tells the operator |
 |---|---|---|---|
-| 1 | `captures >= 2`, `distinctCaptures < captures` | `evidence_regressed` | **The camera is jammed.** Ranks with the blockers. |
+| 1 | `captures >= 4`, `distinctCaptures * 2 <= captures` | `evidence_regressed` | **The camera is jammed.** Ranks with the blockers. |
 | 2 | `hero: artifact` | *(witnessed)* | A real frame, pointed at. Converges. |
 | 3 | the run *ever* reported an artifact, but points at none now | `evidence_regressed` | **The harness worked and stopped.** |
 | 4 | `hero: none`, `captures: 0` | *(witnessed)* | Nothing to show, said out loud. Converges. |
@@ -134,11 +134,14 @@ The tests run in this order, and the order is the whole design (`witnessVerdict`
 Two subtleties the order encodes, both of which triage depends on:
 
 - **The jam is tested first, before even `hero: artifact`** — a board leading with a frame from a
-  stuck harness is the worst reading of all, not an acceptable one. `distinctCaptures < captures` is
-  the test: *any* duplicate frame, not only a gallery that is all one image, because the capture
-  contract rejects a frame identical to any earlier one. Measured: a harness broke at round 3 and each
+  stuck harness is the worst reading of all, not an acceptable one. But the test is *mostly* stuck, not
+  *ever* repeated: `distinctCaptures * 2 <= captures`, gated on `captures >= 4` so there is enough
+  evidence before the harness gets accused. Two real corpora broke the earlier "any duplicate is a
+  jam" rule — a healthy 40-round camera at 110 captures/77 distinct, and a run at 6/4 where the camera
+  was fine while the run itself was stuck on something unrelated — both of which a majority-repeat
+  floor waves through. Measured on the jam it was built to catch: a harness broke at round 3 and each
   later capture re-emitted round 1's frame byte-for-byte, four files deep, while the board read 7 of 9
-  confirmed with no blocker.
+  confirmed with no blocker — 1 distinct of 4, still fires.
 - **`unpointed` and `evidence_regressed` look identical on disk** — frames present, hero pointing at
   none — and the tiebreak is *history*, not the directory. A run whose earlier rounds reported an
   `artifact` hero (row 3, `everCaptured`) had a working camera and lost the pointer, so it is
@@ -170,9 +173,10 @@ truthfully either way: the gate demotes the **status**, not the count.
 expects `unwitnessed` with `confirmed === 3`; `heroNone` (said so out loud) converges;
 `heroNoneWithGallery` (said so out loud with four frames on disk) demotes to `unpointed`;
 `heroNoneJammedCamera` and `heroArtifactJammedCamera` (four frames, one picture) demote to
-`evidence_regressed` whether or not the board points at one, and `heroPartialDuplicate` (three frames,
-two distinct — an `A, B, A` gallery) demotes the same way, proving the test is `distinctCaptures <
-captures` and not `=== 1`; and `heroNoneNoGallery`
+`evidence_regressed` whether or not the board points at one, and `heroJammedCamera` (six frames, two
+distinct — a majority-repeat gallery) demotes the same way, proving the test is `distinctCaptures * 2
+<= captures` and not `< captures`; `heroBenignDuplicates` (six frames, four distinct — under half
+repeats, the corpus-shaped counterexample) reaches its positive status instead; and `heroNoneNoGallery`
 keeps the honest half converging; `auditNoCaptures` (an otherwise-perfect audit missing the new
 scalar) is unreadable and fails closed; `handoffAbsent` expects `undocumented` with the witness rung
 satisfied; `bothMissing` ranks
