@@ -1,0 +1,28 @@
+autonomous-loop/SKILL.md
+  h_8d030b808895cd 179-204,304-326,403-426,474-479,482-484
+autonomous-loop/assets/loop-template.js
+  h_8d030b808895cd 100-103,128-164,166-179,193-197,286-292,294,299-305,315-318,518-534,559-560,920-933,1120-1123,1204-1235,1239-1243,1245,1361-1433,1442-1445,1542-1550,1595-1597,1604-1606,1617-1627
+autonomous-loop/assets/workbench.html
+  h_8d030b808895cd 306-311
+autonomous-loop/references/observability.md
+  h_8d030b808895cd 109-110,116,119-140,149-150,156-158,196,199-201,203-205
+autonomous-loop/scripts/check_harness.mjs
+  h_8d030b808895cd 1-86
+autonomous-loop/scripts/replay_gates.mjs
+  h_8d030b808895cd 1-117
+autonomous-loop/scripts/selfcheck_loops.mjs
+  h_8d030b808895cd 43-48,151-155,225-229,260,266,270-278,356-374,380
+autonomous-loop/scripts/selfcheck_preflight.mjs
+  h_8d030b808895cd 141-143,315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1877ca26c6956d2eac572ddb31aa8abf87f460ac",
+  "prompts": {},
+  "humans": {
+    "h_8d030b808895cd": {
+      "author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
