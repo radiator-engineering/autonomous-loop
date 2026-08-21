@@ -11,7 +11,11 @@
 // contract) is UNSPOOFABLE, which is a hard failure: a driver nothing can test must not launch on
 // the strength of nothing.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { loadFilledDriver, spoofWorld, fixturesFor } from './lib/spoof_world.mjs'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
 
 const HARD_ROUND_CEILING = 500   // absolute; NOT derived from the driver, so a mutant cannot move it
 
@@ -169,6 +173,68 @@ export async function runBattery(src) {
   return { verdict: anyFail ? 'fail' : 'pass', scenarios }
 }
 
+// ---- fillTemplate: fill the shipped template with test values ---------------------
+function fillTemplate(mode) {
+  const TEMPLATE = resolve(HERE, '../assets/loop-template.js')
+  let src = readFileSync(TEMPLATE, 'utf8')
+  const subs = {
+    '<<ARCHETYPE>>': mode,
+    '<<MAX_ROUNDS>>': '6',
+    '<<PASS_THRESHOLD>>': '0.9',
+    '<<DRY_ROUNDS>>': '2',
+    '<<MAX_RETRIES>>': '2',
+    '<<BATCH>>': '8',
+    '<<LENSES>>': "['a','b']",
+    '<<INVARIANTS>>': "['inv1','inv2']",
+    '<<MANDATES>>': "['correctness','performance']",
+    '<<EFFORT>>': 'balanced',
+    '<<EVIDENCE_EVERY>>': '1',
+  }
+  for (const [k, v] of Object.entries(subs)) src = src.split(k).join(v)
+  src = src.replace(/<<[^>]+>>/g, 'x')
+  src = src.replace('export const meta', 'const meta')
+  return src
+}
+
+// ---- selfTest: verify the battery passes on all archetypes and fails on mutants ----
+async function selfTest() {
+  let failures = 0
+  const check = (ok, name, detail = '') => {
+    if (!ok) failures++
+    console.log(`${ok ? 'PASS' : 'FAIL'}  selftest   ${name.padEnd(24)} ${detail}`)
+  }
+
+  for (const mode of ['converger', 'exhauster', 'saturator', 'explorer', 'sentinel']) {
+    const r = await runBattery(fillTemplate(mode))
+    check(r.verdict === 'pass', `template:${mode}`, `verdict=${r.verdict}`)
+  }
+
+  // Every mutant is a driver DELIBERATELY broken one way; the battery must go red on each, and the
+  // mutation must be proven to have LANDED (a silent no-op replace certifies nothing).
+  const MUTANTS = [
+    { name: 'disarmedBlockerGate', mode: 'exhauster',
+      from: "hasOpenBlocker(state) || state.gap || stalled(state) ? 'blocked'", to: "false ? 'blocked'",
+      redScenario: 'contextDeathWorker' },
+    { name: 'disarmedWitnessGate', mode: 'exhauster',
+      from: "positive && !witnessed                ? 'unwitnessed'", to: "false ? 'unwitnessed'",
+      redScenario: 'lyingVerifier' },
+    { name: 'alienLabel', mode: 'exhauster',
+      from: "{ ...TIER.mechanical, phase: 'Ledger', label: 'audit', schema: AUDIT_SCHEMA }", to: "{ ...TIER.mechanical, phase: 'Ledger', label: 'audit2', schema: AUDIT_SCHEMA }",
+      redVerdict: 'unspoofable' },
+  ]
+  for (const m of MUTANTS) {
+    const src = fillTemplate(m.mode)
+    if (!src.includes(m.from)) {
+      check(false, m.name, `mutation site not found — template changed shape`)
+      continue
+    }
+    const r = await runBattery(src.replace(m.from, m.to))
+    const red = m.redVerdict ? r.verdict === m.redVerdict : r.scenarios[m.redScenario] === false
+    check(red, m.name, `verdict=${r.verdict}`)
+  }
+  process.exit(failures ? 1 : 0)
+}
+
 // ---- CLI ---------------------------------------------------------------------------------------
 async function main() {
   const args = process.argv.slice(2)
@@ -190,8 +256,7 @@ async function main() {
   }
 
   // Self-test mode (shipped template x5 archetypes) is Task 3's job.
-  console.log('self-test not yet wired')
-  process.exit(1)
+  await selfTest()
 }
 
 main()
