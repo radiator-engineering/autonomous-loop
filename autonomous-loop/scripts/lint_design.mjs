@@ -170,6 +170,8 @@ function lintL2(driverSrc, brief, measured, opts = {}) {
 // ---- L3: evidence contract (the only default hard fail) -----------------------------------------
 function lintL3(driverSrc, brief) {
   const evidenceBody = extractSection(brief, '## Evidence') || ''
+  const negatedVisual = /\b(no|not|without|non-)\s*(visual|screenshot|capture|image|png|render|pixel|browser)\b/i.test(evidenceBody)
+  if (negatedVisual) return { level: 'pass', reason: 'evidence contract is non-visual' }
   const visual = L3_VISUAL.test(evidenceBody)
   if (!visual) return { level: 'pass', reason: 'evidence contract is non-visual' }
 
