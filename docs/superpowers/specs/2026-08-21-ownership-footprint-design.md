@@ -33,15 +33,15 @@ In the theory's terms: the tree is an unrecorded channel between rounds. This sp
 One append-only file at `<LEDGER_DIR>/footprint.jsonl`, beside `claims.jsonl` but never confused with it: `claims.jsonl` records **verified assertions** (the ledger agent's file); `footprint.jsonl` records **intent and disposition** (the workers' file). Two line shapes:
 
 ```jsonl
-{"round":4,"item":"q7","attempt":1,"event":"claim","files":["src/parser.mjs","test/parser.test.mjs"]}
-{"round":4,"item":"q7","attempt":1,"event":"close","status":"done","note":"parser rewritten, tests green"}
+{"ts":"2026-08-21T22:41:07Z","item":"q7","event":"claim","files":["src/parser.mjs","test/parser.test.mjs"]}
+{"ts":"2026-08-21T22:44:31Z","item":"q7","event":"close","status":"done","note":"parser rewritten, tests green"}
 ```
 
 - **claim** — appended BEFORE the worker's first edit. Files are the worker's honest intent at start; if scope grows mid-work, the worker appends a second claim line (append-only, never rewrite — other agents append concurrently).
 - **close** — appended as the worker's last act. `status` is `done`, `noop`, or `blocked`; `note` is one line, the worker-side half of the handoff (the verifier's verdict is the other half).
 - **A claim with no matching close is the signal, not an error**: the attempt died mid-work, and its claimed files are the leftover suspects. Absence is load-bearing by design — a crashed worker cannot be asked to report, so the protocol is arranged so its silence still says something precise.
 
-`attempt` is `state.fails.get(id)+1` — driver-known, deterministic for a given round history, so a resumed run interpolates the same number and prompts replay byte-identical from cache.
+The worker stamps `ts` itself, exactly as `activity.jsonl` already works, and the driver interpolates nothing that varies per attempt — no round number, no attempt counter. This is what keeps the directive's text constant for a given item, so a failing item's attempts 2..STUCK_AFTER stay byte-identical to each other (the invariant the `stuck` selfcheck scenario asserts, and the resume-cache discipline every directive follows). Attempts are told apart by timestamp order, and per-item claim/close pairing needs no counter: claims and closes for an item alternate chronologically, so a trailing claim without a close is the attempt that died.
 
 ---
 
@@ -51,7 +51,7 @@ One append-only file at `<LEDGER_DIR>/footprint.jsonl`, beside `claims.jsonl` bu
 
 **2. `retryDirective` gains one sentence**: read `<LEDGER_DIR>/footprint.jsonl` lines for this item first — a prior claim without a close is an attempt that died mid-work, and its `files` list is where to look for leftovers. The directive's existing instruction (revert or deliberately re-derive, never adopt unexamined) is unchanged; the footprint tells it *where*, which was the missing half.
 
-**3. Finalize reconciles**: one instruction added to the finalize prompt — compare `git diff --name-only` for the run against the union of claimed files in `footprint.jsonl`; list edits no attempt claimed, and files claimed by two different items, as one line each under "Traps". Surface, don't gate: reconciliation changes no status and touches no schema.
+**3. Finalize reconciles**: one instruction added to the finalize prompt — compare the working tree's changed files (`git status --porcelain`; the run's base commit is not something finalize can know) against the union of claimed files in `footprint.jsonl`; list edits no attempt claimed, and files claimed by two different items, as one line each under "Traps". Surface, don't gate: reconciliation changes no status and touches no schema. Honest limit: work a run committed along the way escapes this comparison; v1 accepts that, since the leftover hazard lives in the uncommitted tree.
 
 ## What deliberately does NOT change
 
