@@ -1,0 +1,29 @@
+autonomous-loop/scripts/replay_gates.mjs
+  s_ea64c4b449125a::t_dd3995de133318 109-118
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_6001b01fde2064 388-402
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_ba3757f790a78d 147-160
+  s_ea64c4b449125a::t_f7490be912ad46 234,236-241
+  s_ea64c4b449125a::t_1d6473f62fc4bf 188-192
+  s_ea64c4b449125a::t_0324a0cc735b0d 130
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_383da8b95a2437 1432-1439
+  s_ea64c4b449125a::t_66f37d6ba1e3e1 1464-1475
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1c7ce97cd850c55fcae1e71a1ffaaa9f7aaac4b3",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}
