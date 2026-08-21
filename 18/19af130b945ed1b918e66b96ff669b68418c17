@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-08-21-ownership-footprint-design.md
+  s_ea64c4b449125a::t_347c1466da30af 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1819af130b945ed1b918e66b96ff669b68418c17",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
