@@ -106,6 +106,16 @@ const CASES = [
   ['one frame is not yet evidence of a jam',       A('none', 1, 1),         false, 'unpointed'],
   ['reported a capture, now points at none',       A('none', 3, 3),         true,  'regressed'],
   ['reported a capture and still points at one',   A('artifact', 3, 3),     true,  'witnessed'],
+  // ISSUE #4, measured. A 25-round exhauster: 28 captures, 22 distinct (not majority-stuck — the
+  // duplicates were all early-run, and check_harness.mjs reported the capture script unchanged
+  // against its pin for the whole run), and the final item's hero is legitimately "none" after
+  // earlier rounds DID point at a real frame. `everCaptured` alone used to read that as "it worked
+  // once; it does not now" and fire `regressed` — the harness-stopped verdict — even though the
+  // harness provably never stopped. Below the 4-capture floor there still isn't enough gallery to
+  // trust the ratio test (see 'reported a capture, now points at none' above, which must stay
+  // `regressed`); at 28/22 there is, and the ratio test already cleared it, so this is a pointer
+  // bug, not a jam.
+  ['final none beside a healthy gallery, once captured', A('none', 28, 22), true, 'unpointed'],
 ]
 
 let failed = 0

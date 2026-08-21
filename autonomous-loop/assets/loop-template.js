@@ -1429,10 +1429,14 @@ function captureClause(item, state) {
 //
 // Four answers, and the order of the tests is the whole design:
 //   'witnessed'  — the board points at a real frame, OR says "none" and the directory agrees.
-//   'regressed'  — a capture SUCCEEDED in some earlier round and the board does not point at one now.
-//                  Checked FIRST after the fail-closed case, because it is the only answer that
-//                  survives a full gallery: a run whose harness died at round 3 has frames on disk
-//                  from rounds 1-2 and would otherwise read as merely `unpointed`.
+//   'regressed'  — the harness looks stopped: EITHER the gallery is majority duplicates (checked FIRST
+//                  after the fail-closed case, because it is the only answer that survives a full
+//                  gallery — a run whose harness died at round 3 has frames on disk from rounds 1-2 and
+//                  would otherwise read as merely `unpointed`), OR a capture succeeded in some earlier
+//                  round, the board does not point at one now, AND the gallery is too small (below the
+//                  4-capture floor) for the ratio test above to have an opinion either way — the
+//                  conservative reading when that's the only evidence there is. A healthy-sized gallery
+//                  the ratio test already cleared is NOT re-accused just because the pointer moved.
 //   'unpointed'  — frames exist, the board points at none. A pointer bug, not a run failure.
 //   'unwitnessed'— nothing to show and no capture path. Fail-closed default.
 //
@@ -1457,7 +1461,18 @@ function witnessVerdict(audit, everCaptured) {
   // the same honest noise, not a broken harness. `distinctCaptures * 2 <= captures`, not `< captures`.
   if (audit.captures >= 4 && audit.distinctCaptures * 2 <= audit.captures) return 'regressed'
   if (audit.hero === 'artifact') return 'witnessed'
-  if (everCaptured) return 'regressed'                                      // it worked once; it does not now
+  // `everCaptured` is a CRUDER signal than the ratio test above: it knows only that some past round's
+  // hero was 'artifact', not whether the gallery stayed healthy since. Below the ratio test's own
+  // floor (`captures < 4`) there isn't enough gallery for that test to have an opinion, so this is the
+  // only evidence available and a lost pointer is read the conservative way, same as it always was.
+  // At or above the floor, the ratio test just ran and did NOT call this a jam — occasional duplicates
+  // past that floor are honest noise, per its own comment above — so trusting a second, blunter test to
+  // override that finding would re-accuse a camera the calibrated test just cleared. MEASURED: a
+  // 25-round exhauster with 28 captures, 22 distinct (all duplicates early-run, capture script pinned
+  // unchanged the whole run) whose final item legitimately bore no evidence read `evidence_regressed`
+  // under the old unconditional rule — the harness had provably never stopped; the board had simply
+  // lost its pointer on the last round. That case wants `unpointed`, below.
+  if (everCaptured && audit.captures < 4) return 'regressed'                // too little gallery to trust the ratio test; it worked once, and now there's not enough evidence it still does
   if (audit.hero === 'none' && audit.captures === 0) return 'witnessed'     // honestly nothing to show
   if (audit.captures > 0) return 'unpointed'                                // something to show, unshown
   return 'unwitnessed'

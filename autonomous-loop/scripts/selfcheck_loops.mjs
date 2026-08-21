@@ -385,6 +385,21 @@ const SCENARIOS = {
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
                      audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 6, distinctCaptures: 4 }),
                      expect: r => r.converged === true && r.confirmed === 3 },
+    // ISSUE #4, MEASURED. A final round whose item legitimately bears no evidence (`hero:'none'`
+    // beside a healthy, mostly-distinct gallery) after EARLIER rounds DID point at a real frame —
+    // round 1 photographs something, round 3's item is an agent-side fix with nothing to see. The
+    // `everCaptured` signal alone used to read "it worked once; it does not now" as proof the
+    // harness had stopped, and fired `evidence_regressed` — the severe status that says every
+    // later round's evidence is untrustworthy — even though the ratio test on the SAME gallery
+    // (28 captures, 22 distinct; scaled here to keep the fixture legible) already clears it as
+    // healthy. The accurate read is `unpointed`: frames exist, the board points at none, promote
+    // one. Must NOT become `evidence_regressed`; must NOT become a positive status either — the
+    // board still has to say the picture is unpointed.
+    heroFinalNoneAfterHealthyGallery:
+                   { enumerate: Q3, verify: id => pass(id),
+                     ledger: n => ({ hero: n === 3 ? 'none' : 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'none', handoff: 'complete', handoffRound: rounds, captures: 28, distinctCaptures: 22 }),
+                     expect: r => r.status === 'unpointed' && r.converged === false && r.confirmed === 3 },
     // The other half, and it is what keeps the case above from being satisfiable by a gate that simply
     // stopped believing `none`: the same run with an EMPTY directory converges. A loop that genuinely
     // cannot produce a picture is still allowed to say so and finish.
