@@ -138,6 +138,12 @@ function fillTemplate(ledgerDir, src = TEMPLATE_SRC) {
     '<<INVARIANTS>>': "['inv1','inv2']",
     '<<MANDATES>>': "['correctness','performance']",
     '<<SPEC>>': 'selfcheck-fixture-spec.md',
+    '<<EFFORT>>': 'balanced',
+    '<<EVIDENCE_EVERY>>': '1',
+    // SKILL_DIR fills a SINGLE-QUOTED literal in the template, so a checkout path containing a
+    // backslash or apostrophe (e.g. /Users/o'brien/...) would otherwise break the driver's parse.
+    // Escape both, backslash first, exactly as the real launch gate must.
+    '<<SKILL_DIR>>': resolve(HERE, '..').replaceAll('\\', '\\\\').replaceAll("'", "\\'"),
   }
   let out = src
   for (const [k, v] of Object.entries(subs)) out = out.split(k).join(v)
@@ -309,8 +315,7 @@ const tamperKernel = (src) => tamperOneLine(src,
 // REGION 'terminal-status' — the witness latch: the only thing standing between "the run verified
 // atoms" and "a human saw any of it". Hard-coding it true reopens the whole unwitnessed rung.
 const tamperTerminal = (src) => tamperOneLine(src,
-  "const witnessed = audit !== null &&\n" +
-  "  (audit.hero === 'artifact' || (audit.hero === 'none' && audit.captures === 0))",
+  "const witnessed = witness === 'witnessed'",
   'const witnessed = true',
   'terminal-status region (witness latch)')
 // REGION 'shared-helpers' — the patience predicate. Returning false means a run that is stuck on a

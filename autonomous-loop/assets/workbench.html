@@ -303,7 +303,12 @@ function badge(status){
   const map={running:'b-running',
     converged:'b-converged',drained:'b-converged',saturated:'b-converged',answered:'b-converged',held:'b-converged',
     blocked:'b-budget',budget_exhausted:'b-budget',runaway_backstop:'b-backstop',
-    unwitnessed:'b-ungated',undocumented:'b-ungated',
+    unwitnessed:'b-ungated',undocumented:'b-ungated',unpointed:'b-ungated',
+    // `evidence_regressed` wears the BLOCKER colour, not the ungated one, because it is not a
+    // reporting slip like the three above it — it says the run's evidence path worked and then
+    // stopped, which makes every later round's capture untrustworthy. A reader scanning the board
+    // should see it in the same register as an open blocker.
+    evidence_regressed:'b-budget',
     capped:'b-stopped',stopped:'b-stopped',inconclusive:'b-stopped'};
   const e=$('#status'); setClass(e, 'badge '+(map[status]||'b-stopped')); setText(e, (status||'unknown').replace('_',' '));
 }

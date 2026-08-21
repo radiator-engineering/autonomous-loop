@@ -176,11 +176,32 @@ mechanism and the evidence). When you generate a loop, verify all of them are pr
    success. Counting verified atoms and never checking that any of it became visible is the same
    defect as counting unverified ones. Note what the gate does **not** ask: not that the picture be
    good, not that it improved — only that it exists and that its absence was said out loud. The
-   escape hatch is checked rather than trusted: the audit also counts the image files in
-   `artifacts/`, and `hero.type="none"` returned beside a non-empty gallery is a **lying hero** —
-   demoted, not believed. Measured: an agent wrote "headless screenshot capability is required" while
-   twelve captures from that same script sat in that same directory. A `none` nobody can falsify is
-   the unverified-atom defect wearing the gate's own uniform.
+   escape hatch is checked rather than trusted: the audit counts the image files in `artifacts/`,
+   **and how many of them are distinct pictures**. Measured: an agent wrote "headless screenshot
+   capability is required" while twelve captures from that same script sat in that same directory. A
+   `none` nobody can falsify is the unverified-atom defect wearing the gate's own uniform.
+
+   **The gate names its reason, because one word for three facts is a status nobody can act on.**
+   Replayed across five real ledgers in three repos, the hero slot had been filled *zero* times —
+   every run took the `type:"none"` hatch — and the old single `unwitnessed` fired on two of them for
+   opposite reasons. So the rung splits, and each ending is now an instruction:
+   - `unwitnessed` — nothing to show and no capture path. **Build one.** (Three of the five: genuinely
+     text-based work. This is the case the hatch exists for and it still finishes green.)
+   - `unpointed` — frames exist, the board points at none. **Promote one.** One measured run had 20
+     rounds, 19 confirmed atoms, no blockers, and a proper before/after pair on disk; telling it "you
+     showed a human nothing" was simply false, and the fix was one line of bookkeeping.
+   - `evidence_regressed` — the harness **worked and stopped**. This ranks with the blockers rather
+     than with the two above, because a capture path that used to succeed and now doesn't makes every
+     later round's evidence untrustworthy, including rounds already counted green. It is detected
+     without trusting anyone's report: *N ≥ 2 frames with only one distinct digest is a jammed
+     camera.* Measured — a harness broke at round 3 and each later "capture" re-emitted round 1's
+     frame byte-for-byte, four files deep, while the board read 7 of 9 confirmed and no blocker. A
+     directory that keeps growing looks like a working camera, which is why counting frames without
+     looking at them was the same defect as counting unverified atoms.
+
+   The whole rung is replayable against finished runs — `scripts/replay_gates.mjs` extracts the
+   decision function from the template and runs it over synthetic cases plus any ledger directories
+   you pass it. A gate you can only exercise by running a loop for an hour is a gate that drifts.
 9. **A run that left no pickup document may not call itself a success.** Every positive terminal
    status is also gated on `HANDOFF.md` — what a fresh agent reads to continue this run — being
    present *and describing the round the run actually ended on*. It is rewritten every round, never
@@ -280,8 +301,29 @@ Seven gates, each fail-closed, each naming its own fix:
   are not all written in the kernel: the closed enums the counters are built from live there, and so
   does the `additionalProperties: false` that stops a verdict writing the item's control fields. A
   driver could have passed a three-region DESCENT with a byte-perfect kernel and those disarmed one
-  screen above it. `TIER` was moved up into Config so this region could close — it is the one thing
-  in that span a run is meant to tune (`quality-first` shifts every tier up one).
+  screen above it. `TIER` is derived in Config from the `EFFORT` knob so this region can close — the
+  tier map is the one thing in that span a run is meant to tune, and deriving it from a named setting
+  beats hand-editing it.
+
+  **What DESCENT does *not* cover, and what does instead.** DESCENT holds the *driver* still. It
+  cannot hold the **evidence harness** still — the script that boots the app and takes the picture —
+  because that script is bespoke per run and often does not exist at preflight time (on one measured
+  run, *building* it was queue item #1). Yet the entire witness gate stands on it. Measured: a harness
+  was hand-edited twice mid-flight to stop it hijacking a browser tab, the second edit introduced a
+  race, and capture failed for five rounds while the board reported a healthy run — and the first
+  failure came *before* the first edit, so a preflight hash would not have caught it either.
+  Two mechanisms, because the failure had two halves:
+  - `scripts/check_harness.mjs <LEDGER_DIR>` — **trust on first sight, then hold.** A script the pin
+    file has never seen is recorded and allowed; one it has seen must hash the same. Verifiers run it
+    before every capture. A changed harness is not automatically *wrong*, it is automatically
+    **ungated**: every round since the edit produced evidence nobody checked, which is a blocker, not
+    a note. Re-pin deliberately with `--accept` once a human has looked.
+  - **A timeout is a failure.** The reason the breakage was silent is that the harness did not exit
+    non-zero — it hung, and the runner answered *"moved to the background"*, which is a
+    success-shaped result with no exit code in it. 20 of 31 measured invocations returned in under a
+    tenth of a second and the run called every one of them fine. Any capture path must treat a
+    timeout, a backgrounded command, a missing sidecar, or a frame identical to an existing one as a
+    **failed capture**, and say so in the verdict.
 - **FILLED** — no unfilled `<<MARKER>>` survives. An unfilled knob either crashes at startup or,
   worse, reads as a number and silently disarms a predicate.
 - **PARSES** — the driver **compiles**, and every name it reads is bound somewhere in the file.
@@ -358,8 +400,33 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
   `runs.jsonl`, `claims.jsonl`, capture and framing discipline, artifact pruning, and a triage table
   for reading a board. `references/archetypes.md` says what each archetype puts in the slot.
 - **Knobs (confirm at launch, use the default if the user doesn't care):**
-  - *Cost posture* (`balanced`): tiered models + budget cap. `quality-first` scales up panel size,
-    batch size, and model tier — never a round count; that is its own parameter, below.
+  - *Effort* (`EFFORT`, default `balanced`): the one knob that prices the models. `thrifty` |
+    `balanced` | `quality-first`. It resolves the whole model tier map in Config, above every hashed
+    region — so detuning a run never touches the kernel and never changes what DESCENT checks.
+    Previously this was a hand-edit of the tier map, which meant a detuned run and a thorough one
+    produced ledgers that read identically; now the setting is named, recorded in the ledger head and
+    the run summary, and on the board. Evidence *cadence* is its own knob (`EVIDENCE_EVERY`, below),
+    not derived from effort — how often a run photographs itself is a fact about the work, not about
+    how much you are willing to spend.
+    **Do not reach for `thrifty` to make a slow loop fast.** Measured across eight runs: 61% of a
+    worker's tokens go to orientation before its first edit, but repo reading is 2.5% of wall-clock.
+    Effort buys tokens; it buys almost no time. Wall-clock lives in tests, external services and
+    polling, and the only reliable way to shorten a round is a smaller atom.
+    One floor holds at every setting: **verification never drops below the worker's tier.** A
+    verifier weaker than the agent it grades is not a cheaper loop, it is an ungrounded one — and it
+    fails in the direction that looks like success.
+  - *Evidence cadence* (`EVIDENCE_EVERY`, default `1`): how many rounds between captures. It drives
+    both capture paths on one clock — the ledger writer's hero capture and the per-item verifier
+    capture — so `0` disables collection everywhere at once rather than in one place. `0` declares up
+    front that this loop bears no evidence, which is a legitimate and common shape — three of five
+    measured runs were text-only — and saying it once beats discovering it round by round. Priced: a
+    real capture cost a mean of 69 seconds and 12.4% of one run's wall clock.
+    The sharper control is **per item**: an exhauster's queue items carry `bearsEvidence`, declared at
+    enumeration. Set it false for anything that changes nothing a person could see — a pure refactor,
+    an internal seam, a rename, a test-only change. This is a correctness knob more than a cost one:
+    a capture taken for an item with nothing visible to show does not come back empty, it comes back
+    looking exactly like the last one, and a frame indistinguishable from the baseline is worse than
+    no frame at all. When genuinely unsure, leave it true — a missing frame is the worse error.
   - *Autonomy* (`checkpointed` by default): pause at round boundaries to inspect/redirect, or run
     `autonomous` to the terminal predicate or budget. A sentinel is autonomous by nature.
   - *Terminal parameters*: the round cap (`MAX_ROUNDS`, default `null` — an **unbounded** run,
@@ -407,9 +474,17 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
    decomposition, where each archetype's ids come from, the red half every criterion owes, and the
    anti-gaming rules (shuffle proofs, magnitude as well as frequency, and never perturbing the bar
    instead of the artifact).
-3. **Select the substrate** and fill `assets/loop-template.js` for the chosen mode.
+3. **Select the substrate** and fill `assets/loop-template.js` for the chosen mode. Three markers are
+   easy to miss because they are new: `<<EFFORT>>` (`thrifty` | `balanced` | `quality-first` — the
+   driver refuses anything else at startup rather than defaulting, so a typo cannot silently price the
+   run differently from what the operator was told), `<<EVIDENCE_EVERY>>` (rounds between captures;
+   `0` declares the loop evidence-free), and `<<SKILL_DIR>>` (this skill's directory — a workflow
+   script has no `__dirname`, so it cannot find its own scripts unless you tell it where they are).
 4. **Self-check the kernel and the gate** (`node scripts/selfcheck_loops.mjs`, and
    `node scripts/selfcheck_preflight.mjs` if you touched the gate or the template's region markers).
+   If you touched the witness rung, add `node scripts/replay_gates.mjs` — and pass it the ledger
+   directories of any finished runs you have, because a gate that only ever meets synthetic fixtures
+   is a gate whose real corpus nobody has looked at. That is how the three-state split was found.
    If you edited this skill's own prose, add `node scripts/selfcheck_docs.mjs`; if you touched
    `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`.
 5. **Stand up the workbench, then pass the launch gate** (`node scripts/preflight_launch.mjs …`).
