@@ -1402,6 +1402,10 @@ function captureClause(item, state) {
     `Every frame taken since such an edit is evidence nobody gated, which is a blocker and not a note.` +
     ` Then CAPTURE the evidence for this item into ${LEDGER_DIR}/artifacts/, named for round ` +
     `${state ? state.round : '<round>'}, and write a sidecar JSON beside it saying what the frame proves. ` +
+    `AFTER capturing, run the SAME check again (\`node ${SKILL_DIR}/scripts/check_harness.mjs ${LEDGER_DIR}\`): ` +
+    `if it now reports drift, the harness changed DURING the capture and the frame you just took came ` +
+    `from bytes nobody gated — discard it and return a FAILING verdict. Checking only before the ` +
+    `capture leaves a window the one measured breakage lived in. ` +
     `Treat the capture as FAILED — and say so — if the command exits non-zero, if it times out or gets ` +
     `backgrounded (a timeout is a failure, not a pass; it returns no exit code and must never read as ` +
     `one), if no new file appears, or if the frame is byte-identical to one already in that directory. ` +

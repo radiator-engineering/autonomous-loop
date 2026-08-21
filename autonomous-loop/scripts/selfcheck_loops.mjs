@@ -262,20 +262,16 @@ function harness(scn) {
       return r
     }
     // THE TERMINAL AUDIT — a different agent, reading the files. `n` is not consulted: it runs once.
+    // A scenario's `audit` is returned VERBATIM — no field is filled in for it. `distinctCaptures` is a
+    // required scalar exactly like `captures`, and a compatibility default here would silently repair a
+    // malformed audit and hide the very regression `auditNoDistinct` exists to catch. Every scenario
+    // that returns a custom audit states `distinctCaptures` itself.
     if (label === 'audit') {
-      const a = scn.audit ? scn.audit(disk, counts['ledger'] || 0)
+      return scn.audit ? scn.audit(disk, counts['ledger'] || 0)
         : { hero: disk.hero || 'absent',
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
             handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound,
             captures: disk.captures, distinctCaptures: disk.distinctCaptures }
-      // Scenarios written before the gate could see a jammed camera answer with `captures` alone, and
-      // the kernel rejects an audit missing a field (correctly — `undefined` in the stuck test would
-      // compare false and hand the case back to the count). Default it to "every frame is distinct",
-      // which is what those scenarios meant: they were testing the hero slot, not the harness. A
-      // scenario that wants the jam says so by returning distinctCaptures explicitly.
-      return a && typeof a === 'object' && a.captures !== undefined && a.distinctCaptures === undefined
-        ? { ...a, distinctCaptures: a.captures }
-        : a
     }
     if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize') return scn.finalize ? scn.finalize() : { finalized: true }
@@ -400,6 +396,16 @@ const SCENARIOS = {
                    { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
                      audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds }),
                      expect: r => r.status === 'unwitnessed' && r.converged === false && r.confirmed === 3 },
+    // The SAME check one field over: `distinctCaptures` is load-bearing exactly as `captures` is, so an
+    // audit that reports `captures` and omits `distinctCaptures` is unreadable and must fail closed —
+    // NOT be silently repaired to "every frame distinct", which is what a compatibility default would
+    // do and which would let a jammed camera slip whenever the auditor forgot the field. Same
+    // otherwise-perfect shape as auditNoCaptures, for the same reason: it is the only shape where the
+    // requirement is observable rather than vacuous.
+    auditNoDistinct:
+                   { enumerate: Q3, verify: id => pass(id), ledger: () => ({ hero: 'artifact', handoff: 'written' }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: rounds, captures: 3 }),
+                     expect: r => r.status === 'unwitnessed' && r.converged === false && r.confirmed === 3 },
     // THE HANDOFF GATE. Identical to `happy` in every respect — same items, same verdicts, same 3
     // confirmed atoms, and a hero slot that IS filled — except that HANDOFF.md was never written. The
     // defect it catches: a run that verified every atom, showed a human a picture, and left the next
@@ -449,7 +455,7 @@ const SCENARIOS = {
     lyingLedger:   { enumerate: Q3,
                      verify: (() => { let hit = false
                        return id => (id === 'i2' && !hit ? (hit = true, fail(id, 'major')) : pass(id)) })(),
-                     audit: () => ({ hero: 'artifact', handoff: 'absent', handoffRound: 0, captures: 1 }),
+                     audit: () => ({ hero: 'artifact', handoff: 'absent', handoffRound: 0, captures: 1, distinctCaptures: 1 }),
                      expect: (r, h) => r.status === 'undocumented' && r.converged === false &&
                        r.confirmed === 3 && h.prompts['ledger'][1].includes('"handoff":"written"') },
     crashedVerify: { enumerate: Q3, verify: id => (id === 'i2' ? null : pass(id)), expect: r => r.converged === false },
@@ -854,7 +860,7 @@ const SCENARIOS = {
     // Off by exactly one, because that is the shape a real stale handoff has — the last round's writer
     // skipped it and the previous round's file stayed behind.
     staleAudit:    { critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => pass(id),
-                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: Math.max(0, rounds - 1), captures: rounds }),
+                     audit: (disk, rounds) => ({ hero: 'artifact', handoff: 'complete', handoffRound: Math.max(0, rounds - 1), captures: rounds, distinctCaptures: rounds }),
                      expect: r => r.status === 'undocumented' && r.converged === false && r.confirmed === 3 },
     panelLies:     { critique: () => CRIT(['pass', 'pass', 'pass']), verify: id => fail(id, 'major'), expect: r => r.converged === false },
     crashedVerify: { critique: () => CRIT(['pass', 'pass', 'pass']), verify: () => null, expect: r => r.converged === false },
