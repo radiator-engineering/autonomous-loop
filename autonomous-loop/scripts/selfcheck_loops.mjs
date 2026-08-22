@@ -1489,12 +1489,17 @@ const SCENARIOS = {
     coherenceCommitsItsEdits:
                    { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
-                       // Scoped BY NAME, never blanket. Measured in a scratch repo with LEDGER_DIR
-                       // inside the target: a bare `git add -A` stages the run's own ledger, stages
-                       // each attempt worktree as an embedded-repo gitlink (mode 160000) pointing at
-                       // a branch this run later deletes — a dangling submodule ref that breaks
-                       // clones of the artifact — and sweeps up the operator's unrelated
-                       // work-in-progress. Subtask 2 already had this rule ("never a bare
+                       // Scoped BY NAME, never blanket. A bare `git add -A` sweeps up the operator's
+                       // unrelated work-in-progress in every configuration, which decides the rule by
+                       // itself. Measured in a scratch repo with LEDGER_DIR inside the target and an
+                       // attempt worktree under it: with NO `.gitignore` in the run dir it also stages
+                       // the run's own ledger and stages that worktree as an embedded-repo gitlink
+                       // (mode 160000) pointing at a branch this run later deletes — a dangling
+                       // submodule ref that breaks clones of the artifact. With the `.gitignore`
+                       // containing `*` that workbench_server.py writes at startup, that second half
+                       // does not happen: `git add -A` stages nothing from the ledger dir at all. So
+                       // the gitlink hazard is the workbench-less run dir, and the prompt says so.
+                       // Subtask 2 already had this rule ("never a bare
                        // `git add -A`"); the relocated Coherence pass reintroduced the very thing.
                        // The prompt names the blanket forms in order to FORBID them, so a flat
                        // `!includes` would trip on the warning itself. Assert the shape instead: the
@@ -1518,8 +1523,6 @@ const SCENARIOS = {
     // motive to destroy it. Demanding an unreachable end state is not a harmless overstatement; it is
     // an instruction to do the one thing the paragraph forbids. Assert the demand is scoped to the
     // agent's OWN edits and that the destructive escapes are named and forbidden.
-    coherenceNeverDemandsACleanTree:
-                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
     // ASSERT OVER A BOUNDED VOCABULARY, NOT A PHRASE SHAPE. The first cut of this predicate keyed on
     // one syntactic frame (a verb from a closed set, then "a clean `git status`"). A reviewer put eight
     // natural rewordings of the same demand through it and FIVE escaped — including "Make sure
@@ -1528,8 +1531,15 @@ const SCENARIOS = {
     // depending on word order: in a correct prompt `git status` appears ONLY in the disclaimer that
     // an empty one is not the goal, and `clean` appears ONLY in the list of verbs never to reach for.
     // Pin those two facts and all eight rewordings die. Same trick as coherenceCommitsItsEdits above.
+    // A DELETED DISCLAIMER MUST FAIL, NOT VACUOUSLY PASS. `[...p.matchAll(/git status/g)].every(...)`
+    // is true on an EMPTY match list too — so an edit that strips every mention of `git status`,
+    // disclaimer included, sailed through unnoticed. Anchor on the disclaimer's own words so its
+    // removal is caught directly, not just inferred from a check that has nothing left to fail.
+    coherenceNeverDemandsACleanTree:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
                        p.includes('none of your own edits') &&
+                       p.includes('not reachable here and not your goal') &&
                        [...p.matchAll(/git status/g)].every(m =>
                          /empty\s*[`'"]?$/i.test(p.slice(Math.max(0, m.index - 10), m.index))) &&
                        !/\bclean\b/i.test(p.replace('reset, or clean to tidy', '')) &&
