@@ -1,0 +1,22 @@
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_7dc2ee166cf805 311
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_4511d55303a066 540-542
+  s_ea64c4b449125a::t_b0b194b7b6f16c 524-534
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "a724b314908c9f4e7250d51df93e97d1a8b1786e",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
