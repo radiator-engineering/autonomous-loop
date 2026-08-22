@@ -1,0 +1,19 @@
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_f2f606a1769b9b 1860-1861
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "41d8d0171fa9f4af1d1655eb4003a7dd05bbe84e",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
