@@ -523,12 +523,17 @@ const MODES = {
             `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
             `NEVER \`git add -A\` and never \`git add .\`: this run's own bookkeeping sits under ` +
             `${LEDGER_DIR}, each attempt worktree under it is an embedded git repository that a blanket ` +
-            `add commits as a gitlink pointing at a branch this run later deletes (a dangling submodule ` +
-            `reference that breaks clones of the artifact), and the operator may have unrelated ` +
-            `work-in-progress in this tree that is none of your business. ` +
-            `If you changed nothing, commit nothing and leave \`git status\` clean — an uncommitted ` +
-            `edit left behind does not just vanish from the record, it blocks the NEXT round's merge ` +
-            `of any attempt touching the same file. Either way, finish on a clean \`git status\`. `
+            `add commits as a gitlink pointing at a branch that may not outlive the run (a dangling ` +
+            `submodule reference that breaks clones of the artifact), and the operator may have ` +
+            `unrelated work-in-progress in this tree that is none of your business. ` +
+            `If you changed nothing, commit nothing. Do not leave an edit of YOUR OWN uncommitted: ` +
+            `it does not just vanish from the record, it blocks the NEXT round's merge of any ` +
+            `attempt touching the same file. ` +
+            `Finish with none of your own edits left unstaged or uncommitted, and everything you did ` +
+            `NOT touch exactly as you found it. Do not aim for an empty \`git status\` — it is not ` +
+            `reachable here and not your goal: ${LEDGER_DIR} and the operator's work-in-progress both ` +
+            `show up in it, and they are supposed to. NEVER stash, checkout, reset, or clean to tidy ` +
+            `the tree; that destroys work that is not yours. `
           : ``) +
         `Return a one-line summary of what you reconciled, or "none".`,
         { ...TIER.escalate, phase: 'Coherence', label: 'coherence' })
@@ -1096,8 +1101,18 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
         `\`git merge --abort\`, leave the attempt's worktree in place (its branch still holds the ` +
         `work — a retry rebuilds it fresh; this one is just not landing THIS round), and report the ` +
         `id under "conflicts" with the conflicted file list (\`git diff --name-only --diff-filter=U\` ` +
-        `BEFORE the abort) as its evidence. Never leave the repo mid-merge: always resolve to a clean ` +
-        `\`git status\` — either a completed merge commit or an aborted one — before you finish.`,
+        `BEFORE the abort) as its evidence. ` +
+        `A merge can also be REFUSED before it starts — "Your local changes would be overwritten by ` +
+        `merge", exit 2 — when the shared tree has uncommitted edits to a file the attempt touches. ` +
+        `That is not a conflict and the recovery above does not apply: there is no merge in progress, ` +
+        `so \`git diff --diff-filter=U\` is empty and \`git merge --abort\` fails with "no merge to ` +
+        `abort". Do NOT stash, checkout, reset, or clean to force it through — those uncommitted edits ` +
+        `are someone else's work. Report that id under "conflicts", say in its evidence that the merge ` +
+        `was refused by a dirty tree, and name the files \`git merge\` listed. ` +
+        `Never leave the repo mid-merge: every attempt must end as either a completed merge commit or ` +
+        `an aborted one, with no \`MERGE_HEAD\` left behind, before you finish. (Do not aim for an ` +
+        `empty \`git status\` — ${LEDGER_DIR} and any operator work-in-progress live in it and are ` +
+        `supposed to.)`,
         { ...TIER.mechanical, phase: 'Merge', label: 'merge', schema: MERGE_SCHEMA })
     : { merged: toMerge.map(m => m.id), conflicts: [] }
   // FAIL-CLOSED, same posture as `usable(v)`: a crashed or malformed Merge agent (missing/non-array

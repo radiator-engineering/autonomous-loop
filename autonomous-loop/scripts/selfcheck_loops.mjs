@@ -1237,6 +1237,20 @@ const SCENARIOS = {
                          /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{16}"/.test(round2) &&
                          round2.includes('never build a branch name out of the id yourself')
                      } },
+    // A MERGE CAN FAIL WITHOUT EVER STARTING, AND THE PRESCRIBED RECOVERY DOES NOT APPLY TO IT. Measured
+    // with real git: when the shared tree holds uncommitted edits to a file the attempt touches, `git
+    // merge` REFUSES — "Your local changes would be overwritten by merge", exit 2 — and leaves no merge
+    // in progress. So `git diff --name-only --diff-filter=U` (the prompt's prescribed evidence) is
+    // EMPTY and `git merge --abort` (the prompt's prescribed recovery) exits 128, "no merge to abort".
+    // An agent handed only the conflict recipe has no instruction covering the case, and the obvious
+    // way to make the merge succeed is to stash or reset the very edits that are not its to touch.
+    // Fail-closed is the right answer (report it as not landing), so pin that the case is named, that
+    // its distinguishing symptom is given, and that forcing it through is forbidden.
+    mergePromptHandlesRefusedMerge:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['merge'] || []).some(p =>
+                       /refused/i.test(p) && p.includes('no merge to abort') &&
+                       /Do NOT stash, checkout, reset, or clean/i.test(p)) },
     // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to the merge prompt
     // — its work stayed in its own worktree, verify said no, and nothing about it is asked to merge.
     mergeSkipsUnpassedItems:
@@ -1348,6 +1362,24 @@ const SCENARIOS = {
                        p.includes('git add -- ') && p.includes('git commit') &&
                        [...p.matchAll(/git add (?:-A|\.)/g)].every(m =>
                          /never\s*[`'"]?$/i.test(p.slice(Math.max(0, m.index - 12), m.index)))) },
+    // THE OTHER HALF OF THE SAME PARAGRAPH, AND A DEFECT THE FIX ITSELF SHIPPED. Having just told the
+    // agent that the operator's work-in-progress is none of its business, the prompt closed with
+    // "finish on a clean `git status`" — a state that is UNREACHABLE by any permitted action, because
+    // LEDGER_DIR and the operator's WIP both show up in `git status` and are both off-limits. The only
+    // ways to reach it are to commit the operator's work (forbidden one sentence earlier) or to
+    // stash/checkout/reset/clean it away (destroys uncommitted work that is not the agent's). Worse,
+    // the demand carried its own justification — "an uncommitted edit blocks the NEXT round's merge" —
+    // which is TRUE of the operator's WIP too (measured: `git merge` exits 2, "local changes would be
+    // overwritten"), so an agent reasoning from the prompt's own stated reason has a correct-sounding
+    // motive to destroy it. Demanding an unreachable end state is not a harmless overstatement; it is
+    // an instruction to do the one thing the paragraph forbids. Assert the demand is scoped to the
+    // agent's OWN edits and that the destructive escapes are named and forbidden.
+    coherenceNeverDemandsACleanTree:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
+                       p.includes('none of your own edits') &&
+                       !/(finish|end|resolve)[^.]{0,40}\ban?\s+clean\s+[`'"]?git status/i.test(p) &&
+                       /NEVER stash, checkout, reset, or clean/i.test(p)) },
     // FINALIZE'S FOOTPRINT RECONCILIATION MUST LOOK WHERE THE WORK ACTUALLY IS. Subtask 1 reconciled
     // claims against `git status --porcelain` of the shared tree; subtask 3 then guaranteed that tree
     // is CLEAN by construction (every worker edit is committed inside a worktree and lands as a merge
