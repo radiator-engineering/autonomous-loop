@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 
-const EXACT = new Set(['enumerate', 'charter', 'hypothesize', 'poll', 'ledger', 'audit', 'coherence', 'finalize'])
+const EXACT = new Set(['enumerate', 'charter', 'hypothesize', 'poll', 'ledger', 'audit', 'coherence', 'finalize', 'merge'])
 const PREFIX = ['critique:', 'find:', 'work:', 'verify:']
 
 export function loadFilledDriver(src) {
@@ -80,6 +80,17 @@ export function spoofWorld(scn) {
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
             handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound,
             captures: disk.captures, distinctCaptures: disk.distinctCaptures }
+    }
+    // MERGE (issue #8 subtask 3): same recovery trick as selfcheck_loops.mjs's harness — the driver
+    // names the ids it wants merged right in the prompt text, so the default happy-world responder
+    // recovers them from there rather than needing a separate channel. Default: everything requested
+    // merges cleanly, so a driver a scenario never overrides for `merge` behaves exactly as it did
+    // before this phase existed.
+    if (label === 'merge') {
+      if (scn.merge) return scn.merge(n, prompt)
+      const m = String(prompt).match(/attempt\(s\): (\[[^\]]*\])/)
+      const ids = m ? JSON.parse(m[1]) : []
+      return { merged: ids, conflicts: [] }
     }
     if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize')  return scn.finalize ? scn.finalize() : { finalized: true }

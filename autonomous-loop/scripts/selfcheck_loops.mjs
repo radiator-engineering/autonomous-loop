@@ -79,6 +79,18 @@
 //                    once, not re-worked every round.
 //   stuck          — an item failing STUCK_AFTER rounds running gets the change-approach directive and
 //                    the strong tier; below the threshold its prompt is byte-identical every round.
+//   workerGetsWorktree/verifyLocatesWorktree — (issue #8 subtask 3, attempt isolation) every attempt
+//                    is isolated in its own git worktree/branch, constant text on every dispatch, and
+//                    the verifier is pointed at that worktree, never the shared tree.
+//   mergeRunsAfterPassingVerify/mergeSkipsUnpassedItems/mergeSkippedWhenNothingPassed — a NEW
+//                    sequential Merge phase, after Verify, tries only what Verify just passed and pays
+//                    for nothing when nothing did.
+//   mergeConflictRetries/mergeCrashFailsClosed — the NEW failure mode: a verified pass whose merge
+//                    conflicts (or a Merge agent that crashes) is FAIL-CLOSED — not confirmed, not
+//                    landed, retried into a fresh worktree exactly like a refuted verdict.
+//   coherenceReadsLandedOnly/coherencePromptDescribesMerge — Coherence relocates to AFTER Merge and
+//                    reconciles only items that actually landed, describing a merge rather than a raw
+//                    parallel edit.
 //   unbounded      — MAX_ROUNDS === null ends on the archetype's own predicate, not on a cap: a clean
 //                    run reaches its positive status well below the rail and reports hitBackstop=false.
 //                    The sentinel is the exception — it has no positive stop, so it DOES ride the rail,
@@ -272,6 +284,18 @@ function harness(scn) {
             handoff: disk.handoffRound === null ? 'absent' : 'complete',
             handoffRound: disk.handoffRound === null ? 0 : disk.handoffRound,
             captures: disk.captures, distinctCaptures: disk.distinctCaptures }
+    }
+    // MERGE (issue #8 subtask 3): the driver names the ids it wants merged right in the prompt
+    // (`${JSON.stringify(toMerge.map(m => m.id))}`), so the default mock recovers them from the text
+    // rather than needing a separate channel — the harness has no other way to know which ids the
+    // driver computed. Default: every requested id merges cleanly, exactly the pass-through
+    // `VERIFIED_COMMITS`-off case produces, so no EXISTING scenario needs to know this phase exists.
+    // A scenario overrides `merge` to model a conflict or a crash.
+    if (label === 'merge') {
+      if (scn.merge) return scn.merge(n, prompt)
+      const m = prompt.match(/attempt\(s\): (\[[^\]]*\])/)
+      const ids = m ? JSON.parse(m[1]) : []
+      return { merged: ids, conflicts: [] }
     }
     if (label === 'coherence') return scn.coherence ? scn.coherence() : 'reconciled nothing'
     if (label === 'finalize') return scn.finalize ? scn.finalize() : { finalized: true }
@@ -1093,12 +1117,13 @@ const SCENARIOS = {
     // `fails` goes to 1) and passes on its round-2 re-dispatch. The first work:r1 prompt must stay
     // byte-identical to before this change — no attempt has failed yet — and every prompt after a
     // failed attempt must carry the warning.
-    // Content updated by issue #8 subtask 2 (spec: verified-commits-design): with VERIFIED_COMMITS on
-    // (the default), the directive's WORDING changed from judgment ("git status", "no close line") to
-    // an unconditional reset — see `retryResetIsUnconditional` below for that exact text. What this
-    // scenario still proves, unchanged since subtask 1, is the shape every future wording must keep:
-    // RETRY: fires on every attempt after the first and NEVER on the first, and it still points the
-    // worker at footprint.jsonl for which files are its own.
+    // Content evolved twice since: subtask 2 (spec: verified-commits-design) changed the WORDING from
+    // judgment ("git status", "no close line") to an unconditional reset, and subtask 3 (spec:
+    // attempt-isolation-design) shrunk it further to a short note — see `retryShrunkToNote` below for
+    // that exact text. What this scenario still proves, unchanged since subtask 1, is the shape every
+    // future wording must keep: RETRY: fires on every attempt after the first and NEVER on the first
+    // (footprint.jsonl still appears in the prompt either way — footprintDirective names it
+    // unconditionally on every dispatch, independent of whether RETRY: fires).
     retryGetsTreeWarning:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
@@ -1126,43 +1151,125 @@ const SCENARIOS = {
                      expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
                        p.includes('footprint.jsonl') && p.includes('git status --porcelain') &&
                        p.includes('"Traps"') && p.includes('no claim covers') && p.includes('claimed by two different items')) },
-    // ADVANCE THE TREE ONLY THROUGH VERIFIED CHANGES (spec: verified commits, issue #8 subtask 2).
-    // r1 fails round 1's verify (nothing to commit yet) and passes round 2's — the SAME two-round
-    // shape `retryGetsTreeWarning` uses, so the round-1 ledger prompt and the round-2 one can be
-    // checked against each other rather than in isolation. Round 1 has NOTHING verified pass, so its
-    // ledger prompt must name no commit for r1 at all — that is `ledgerSkipsFailedItems` below. Round
-    // 2 verifies r1 pass, so ITS ledger prompt must instruct a commit scoped to r1's own claimed
-    // files, never a bare `git add -A` that would sweep in a neighbor's still-uncommitted work.
-    ledgerCommitsPassedItems:
+    // EVERY ATTEMPT IS ISOLATED IN ITS OWN WORKTREE (issue #8 subtask 3, spec: attempt-isolation-
+    // design). Constant per item, first attempt and retry alike — no branch on state.fails at all,
+    // which is why the assertion is `every`, not "first differs from later" the way retryGetsTreeWarning's
+    // is: worktreeDirective does not distinguish a retry from a first attempt by TEXT, only by what the
+    // reset-and-recreate step at that path finds on disk.
+    workerGetsWorktree:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
                      expect: (r, h) => {
-                       const rounds = h.prompts['ledger'] || []
+                       const prompts = h.prompts['work:r1'] || []
+                       return prompts.length >= 2 && prompts.every(p =>
+                         p.includes('WORKTREE') && p.includes('/attempts/r1') &&
+                         p.includes('attempt/r1') && p.includes('git worktree add'))
+                     } },
+    // THE VERIFIER IS POINTED AT THE ISOLATED ATTEMPT, NEVER THE SHARED TREE (same spec): the shared
+    // tree has not been touched yet this round when Verify runs (Merge is the phase that changes it),
+    // so a verifier reading the shared tree would be reading last round's state.
+    verifyLocatesWorktree:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['verify:r1'] || []).some(p =>
+                       p.includes('/attempts/r1') && p.includes('cd there') &&
+                       p.includes('never against the shared tree')) },
+    // MERGE ONLY TRIES WHAT VERIFY JUST PASSED (issue #8 subtask 3, spec: attempt-isolation-design;
+    // supersedes subtask 2's ledgerCommitsPassedItems/ledgerSkipsFailedItems, which asserted the same
+    // shape about a `git commit` instruction that no longer exists — commit-per-pass moved here and
+    // became merge-per-pass). Same two-round shape `retryGetsTreeWarning` uses: round 1 has NOTHING
+    // verified pass for r1, so round 1's merge prompt must not name it; round 2 verifies r1 pass, so
+    // ITS merge prompt must instruct `git merge --no-ff attempt/<id>` for r1 specifically.
+    mergeRunsAfterPassingVerify:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     expect: (r, h) => {
+                       const rounds = h.prompts['merge'] || []
                        const round2 = rounds[1] || ''
-                       return round2.includes('footprint.jsonl') && round2.includes('"r1"') &&
-                         round2.includes('git add -A -- ') && round2.includes('git commit') &&
-                         round2.includes('NEVER a bare')
+                       return round2.includes('"r1"') && round2.includes('git merge --no-ff attempt/<id>')
                      } },
-    // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to commit — its
-    // half-finished edits are exactly the leftovers the retry directive (below) now discards
-    // unconditionally, and a ledger step that committed them anyway would be committing an
-    // unverified attempt, defeating the entire point of "canonical artifact = last green commit".
-    ledgerSkipsFailedItems:
+    // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to the merge prompt
+    // — its work stayed in its own worktree, verify said no, and nothing about it is asked to merge.
+    mergeSkipsUnpassedItems:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
                      expect: (r, h) => {
-                       const round1 = (h.prompts['ledger'] || [])[0] || ''
-                       return !round1.includes('"r1"') || !round1.includes('git commit')
+                       const round1 = (h.prompts['merge'] || [])[0] || ''
+                       return !round1.includes('"r1"')
                      } },
-    // THE RETRY WORKER'S LEFTOVER INSTRUCTION BECOMES UNCONDITIONAL. Once a verified pass is always a
-    // commit (the two scenarios above), nothing of value can be sitting uncommitted on an item's own
-    // claimed files, so the retry directive stops asking the worker to JUDGE each leftover ("either
-    // revert it or re-derive it") and instead tells it to reset unconditionally. Same two-round shape
-    // as `retryGetsTreeWarning`, whose byte-identity assertion (no attempt has failed yet ⇒ no RETRY:
-    // text) this extends rather than replaces.
-    retryResetIsUnconditional:
+    // COST DISCIPLINE: the Merge agent is never dispatched when nothing verified pass this round —
+    // same guard shape as coherenceSkipped. A single criterion that never passes never pays for a
+    // merge agent that would have nothing to try.
+    mergeSkippedWhenNothingPassed:
+                   { mandates: "['correctness']", critique: () => CRIT(['fail']),
+                     verify: id => fail(id, 'major'),
+                     expect: (r, h) => (h.counts['merge'] || 0) === 0 },
+    // THE NEW FAILURE MODE: A VERIFIED PASS WHOSE MERGE CONFLICTS DOES NOT LAND (issue #8 subtask 3).
+    // r1 fails verify round 1 (as in the scenarios above), then PASSES verify every round after — but
+    // round 2's merge mock reports it in "conflicts" instead of "merged". The kernel must treat that
+    // exactly like a refutation: NOT confirmed, NOT counted, and retried — carrying the RETRY: text
+    // again on its NEXT dispatch, into a fresh worktree (worktreeDirective is unconditional, so no
+    // separate "you just conflicted" text is needed). Round 3's merge mock lets it land cleanly, and
+    // the run still reaches its positive status once it does — the conflict costs a round, not the run.
+    mergeConflictRetries:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']),
+                     verify: (() => { let n = 0
+                       return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
+                     merge: (n, prompt) => {
+                       const m = prompt.match(/attempt\(s\): (\[[^\]]*\])/)
+                       const ids = m ? JSON.parse(m[1]) : []
+                       if (n === 2 && ids.includes('r1')) {
+                         return { merged: ids.filter(i => i !== 'r1'),
+                                  conflicts: [{ id: 'r1', evidence: 'conflict on shared_file.js (test fixture)' }] }
+                       }
+                       return { merged: ids, conflicts: [] }
+                     },
+                     expect: (r, h) => {
+                       const work = h.prompts['work:r1'] || []
+                       return work.length >= 3 && work.slice(1).every(p => p.includes('RETRY:')) &&
+                         r.status === 'converged' && r.converged === true && r.confirmed === 3
+                     } },
+    // FAIL-CLOSED ON A CRASHED OR UNREADABLE MERGE AGENT: treated the same as a crashed verifier is
+    // treated by `usable()` — nothing verified pass this round is counted as landed, ever, for as long
+    // as the crash persists. Every criterion verifies pass immediately but the merge mock always
+    // returns null, so nothing ever confirms.
+    mergeCrashFailsClosed:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     merge: () => null,
+                     expect: (r, h) => r.confirmed === 0 && (h.counts['merge'] || 0) >= 1 },
+    // COHERENCE READS ONLY WHAT ACTUALLY LANDED (issue #8 subtask 3: relocated after Merge). Two
+    // criteria fail their round-1 critique (so two workers do real edits) and both verify pass, but
+    // the merge mock conflicts r2 specifically. Coherence must reconcile r1 (and r3, already passing)
+    // without ever being told about r2 — a conflicted attempt changed nothing on the shared tree, so
+    // naming its region to the reconciler would have it looking for work that is not there.
+    coherenceReadsLandedOnly:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     merge: (n, prompt) => {
+                       const m = prompt.match(/attempt\(s\): (\[[^\]]*\])/)
+                       const ids = m ? JSON.parse(m[1]) : []
+                       return { merged: ids.filter(i => i !== 'r2'),
+                                conflicts: ids.includes('r2') ? [{ id: 'r2', evidence: 'conflict (test fixture)' }] : [] }
+                     },
+                     expect: (r, h) => (h.prompts['coherence'] || []).some(p => !p.includes('r2')) },
+    // THE COHERENCE PROMPT ITSELF DESCRIBES A MERGE, NOT A RAW PARALLEL EDIT (issue #8 subtask 3):
+    // pins the prompt-text rewrite, not just the call-site's new filtering. Reuses the ORIGINAL
+    // coherenceRuns fixture (both r1/r2 fail their critique, both verify pass, the default merge mock
+    // lands both cleanly) so this is a direct regression check against the retired wording.
+    coherencePromptDescribesMerge:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
+                       p.includes('MERGED into the shared tree') &&
+                       !p.includes('each edit was made without sight of the others')) },
+    // THE RETRY WORKER'S INSTRUCTION SHRINKS TO A SHORT NOTE (issue #8 subtask 3, spec: attempt-
+    // isolation-design). Subtask 2's unconditional-reset text ("git checkout", "git clean") assumed a
+    // shared tree with an item's own leftovers worth resetting; attempt isolation removes that premise
+    // a second time — worktreeDirective already destroys and rebuilds the worktree on THIS dispatch,
+    // whether or not it is a retry, so there is nothing left for retryDirective to instruct. Same
+    // two-round shape as retryGetsTreeWarning, whose byte-identity assertion (no attempt has failed
+    // yet ⇒ no RETRY: text) this extends rather than replaces.
+    retryShrunkToNote:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
                        return id => (id === 'r1' ? (++n === 1 ? fail(id, 'major') : pass(id)) : pass(id)) })(),
@@ -1171,8 +1278,8 @@ const SCENARIOS = {
                        const first = prompts[0] || ''
                        const retry = prompts[1] || ''
                        return !first.includes('RETRY:') &&
-                         retry.includes('RETRY:') && retry.includes('git checkout') &&
-                         retry.includes('git clean') && !retry.includes('either revert it or re-derive it')
+                         retry.includes('RETRY:') && retry.includes('FRESH, isolated worktree') &&
+                         !retry.includes('git checkout') && !retry.includes('git clean')
                      } },
   },
 }
