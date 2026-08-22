@@ -111,6 +111,18 @@ const VERIFIED_COMMITS = true             // "this run's TARGET is a git working
                                           // verified pass. Read directly by
                                           // worktreeDirective, worktreeVerifyDirective, the Merge phase,
                                           // and retryDirective — never branched on by MODE.
+const REPO_ROOT = '<<REPO_ROOT>>'         // the ONE git repo this run may touch, as an absolute path. Every
+                                          // git command any prompt emits is anchored to it with `git -C`.
+                                          // This exists because prose does not work: the directives used to
+                                          // say "(run from the shared tree)" and name the repo only in
+                                          // TARGET, and `git worktree add` resolves against the AGENT'S
+                                          // CURRENT DIRECTORY. Measured — a run created all three of its
+                                          // attempt worktrees in a different repository (the operator's own
+                                          // checkout) and exited 0 every time, because an unanchored
+                                          // worktree in the wrong repo is not an error, just a worktree in
+                                          // the wrong repo. The Merge phase would then have committed there.
+                                          // Ignored when VERIFIED_COMMITS is false (no git directive is
+                                          // emitted at all); fill it with TARGET's repo root otherwise.
 const BRIEF = LEDGER_DIR + '/BRIEF.md'    // the intake, written BEFORE the run and gated by the launch gate
                                           // (scripts/preflight_launch.mjs BRIEF). The handoff carries its
                                           // framing forward so "what this run is for" is the human's answer,
@@ -520,7 +532,10 @@ const MODES = {
           ? `You are editing the SHARED tree directly (not a worktree — the attempts already merged). ` +
             `Nothing else in this run commits the shared tree, so COMMIT what you change here or it ` +
             `is lost — staging ONLY the files you yourself edited, BY NAME: ` +
-            `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
+            `\`git -C ${REPO_ROOT} add -- <each file you changed>\` then ` +
+            `\`git -C ${REPO_ROOT} commit -m "coherence: reconcile round"\`. Both are anchored to ` +
+            `${REPO_ROOT} and must stay that way: this is the ONLY phase that commits the shared ` +
+            `tree, so an unanchored command here commits into whatever repo you are standing in. ` +
             `NEVER \`git add -A\` and never \`git add .\`. That holds whatever else is true, because ` +
             `the operator may have unrelated work-in-progress anywhere in this tree that is none of ` +
             `your business, and a blanket add sweeps it into your commit. It matters twice over when ` +
@@ -1083,24 +1098,27 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
         `Each id's branch and worktree path (ids are not legal git refs, so use these EXACTLY as ` +
         `given — never build a branch name out of the id yourself): ` +
         `${JSON.stringify(toMerge.map(m => ({ id: m.id, ...attemptWorktree(m.id) })))}. ` +
-        `First check whether the shared tree is inside a git repository (\`git rev-parse ` +
+        `EVERY git command below is anchored to the one repo this run may touch with \`-C ${REPO_ROOT}\`, ` +
+        `and you must keep it that way — an unanchored git command resolves against your current ` +
+        `directory and would merge these attempts into whatever repo you are standing in. ` +
+        `First check whether that tree is inside a git repository (\`git -C ${REPO_ROOT} rev-parse ` +
         `--is-inside-work-tree\`); if it is not, report every id above under "merged" (there is ` +
-        `nothing to merge against) and stop. Otherwise, for EACH id above, IN ORDER, from the shared ` +
-        `tree: \`git merge --no-ff <that id's branch> -m "<id>: merge verified attempt (run ${RUN_ID})"\`. ` +
+        `nothing to merge against) and stop. Otherwise, for EACH id above, IN ORDER: ` +
+        `\`git -C ${REPO_ROOT} merge --no-ff <that id's branch> -m "<id>: merge verified attempt (run ${RUN_ID})"\`. ` +
         `If the ` +
         `branch does not exist, or the merge reports "Already up to date", that attempt was a ` +
         `legitimate no-op — it changed nothing, there is nothing to land and nothing to retry — so ` +
         `report that id under "merged" and move on. If it merges ` +
-        `cleanly, remove that attempt's worktree (\`git worktree remove --force <that id's path>\`) ` +
+        `cleanly, remove that attempt's worktree (\`git -C ${REPO_ROOT} worktree remove --force <that id's path>\`) ` +
         `and report the id under "merged". If it conflicts, run ` +
-        `\`git merge --abort\`, leave the attempt's worktree in place (its branch still holds the ` +
+        `\`git -C ${REPO_ROOT} merge --abort\`, leave the attempt's worktree in place (its branch still holds the ` +
         `work — a retry rebuilds it fresh; this one is just not landing THIS round), and report the ` +
-        `id under "conflicts" with the conflicted file list (\`git diff --name-only --diff-filter=U\` ` +
+        `id under "conflicts" with the conflicted file list (\`git -C ${REPO_ROOT} diff --name-only --diff-filter=U\` ` +
         `BEFORE the abort) as its evidence. ` +
         `A merge can also be REFUSED before it starts — "Your local changes would be overwritten by ` +
         `merge", exit 2 — when the shared tree has uncommitted edits to a file the attempt touches. ` +
         `That is not a conflict and the recovery above does not apply: there is no merge in progress, ` +
-        `so \`git diff --diff-filter=U\` is empty and \`git merge --abort\` fails with "no merge to ` +
+        `so \`git -C ${REPO_ROOT} diff --diff-filter=U\` is empty and \`git -C ${REPO_ROOT} merge --abort\` fails with "no merge to ` +
         `abort". Do NOT stash, checkout, reset, or clean to force it through — those uncommitted edits ` +
         `are someone else's work. Report that id under "conflicts", say in its evidence that the merge ` +
         `was refused by a dirty tree, and name the files \`git merge\` listed. ` +
@@ -1771,10 +1789,14 @@ function worktreeDirective(item) {
   // step below is exactly what a retry needs and is harmless (a no-op remove) when nothing exists yet.
   return `\n\nWORKTREE (attempt isolation): this attempt is isolated in its own git worktree, never ` +
     `the shared tree directly. Before any edit: if ${path} already exists (a dead or failed prior ` +
-    `attempt), remove it and its branch first — \`git worktree remove --force ${path}\` then ` +
-    `\`git branch -D ${branch}\` if the branch still exists — so you always start from a clean slate. ` +
-    `Then create a fresh one off the CURRENT mainline: \`git worktree add ${path} -B ${branch} HEAD\` ` +
-    `(run from the shared tree). Do every edit, test, and commit INSIDE ${path} — never touch the ` +
+    `attempt), remove it and its branch first — \`git -C ${REPO_ROOT} worktree remove --force ${path}\` then ` +
+    `\`git -C ${REPO_ROOT} branch -D ${branch}\` if the branch still exists — so you always start from a clean slate. ` +
+    `Then create a fresh one off the CURRENT mainline: \`git -C ${REPO_ROOT} worktree add ${path} -B ${branch} HEAD\`. ` +
+    `Every git command above is anchored with \`-C ${REPO_ROOT}\` and you MUST keep it that way: ` +
+    `an unanchored \`git worktree\` command resolves against your current directory, so it creates this ` +
+    `attempt in whatever repo you happen to be standing in — silently, with exit 0, and the Merge ` +
+    `phase would then commit there. ${REPO_ROOT} is the only repo this run may touch. ` +
+    `Do every edit, test, and commit INSIDE ${path} — never touch the ` +
     `shared tree directly, and never run \`git merge\` yourself; merging only happens after an ` +
     `independent verifier passes this attempt. Commit your work there as you go, on ${branch}, so ` +
     `the branch actually holds something to merge when it passes — an attempt with no commits is ` +
