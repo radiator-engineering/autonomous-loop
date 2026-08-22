@@ -1,0 +1,21 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_de5e375913a532 1390-1395,1398
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_de5e375913a532 1856-1864
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e6494a79a7744409ed56d0c3e4ceb7cbbe844c1f",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
