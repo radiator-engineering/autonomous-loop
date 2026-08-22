@@ -521,11 +521,14 @@ const MODES = {
             `Nothing else in this run commits the shared tree, so COMMIT what you change here or it ` +
             `is lost — staging ONLY the files you yourself edited, BY NAME: ` +
             `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
-            `NEVER \`git add -A\` and never \`git add .\`: this run's own bookkeeping sits under ` +
-            `${LEDGER_DIR}, each attempt worktree under it is an embedded git repository that a blanket ` +
-            `add commits as a gitlink pointing at a branch that may not outlive the run (a dangling ` +
-            `submodule reference that breaks clones of the artifact), and the operator may have ` +
-            `unrelated work-in-progress in this tree that is none of your business. ` +
+            `NEVER \`git add -A\` and never \`git add .\`. That holds whatever else is true, because ` +
+            `the operator may have unrelated work-in-progress anywhere in this tree that is none of ` +
+            `your business, and a blanket add sweeps it into your commit. It matters twice over when ` +
+            `${LEDGER_DIR} sits inside this tree with no \`.gitignore\` of its own — a run dir created ` +
+            `without the workbench, or predating the version that writes one: then a blanket add also ` +
+            `stages this run's own bookkeeping and commits each attempt worktree under it as a gitlink ` +
+            `pointing at a branch that may not outlive the run (a dangling submodule reference that ` +
+            `breaks clones of the artifact). ` +
             `If you changed nothing, commit nothing. Do not leave an edit of YOUR OWN uncommitted: ` +
             `it does not just vanish from the record, it blocks the NEXT round's merge of any ` +
             `attempt touching the same file. ` +
