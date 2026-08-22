@@ -1365,11 +1365,33 @@ const SCENARIOS = {
     // because the prompt contained all the right WORDS. The directives said "(run from the shared
     // tree)" and named the repo only in TARGET, which is prose the agent may or may not act on.
     //
-    // Asserted over a BOUNDED VOCABULARY, which is what makes this cheap and paraphrase-proof: the
-    // anchored form is `git -C <root> <verb>`, so a backtick-git followed directly by any of the
-    // git verbs we emit is by construction unanchored. There is no wording that satisfies the
-    // negative while still being wrong — unlike a phrase-shape assertion, the flag is either
-    // between `git` and the verb or it is not.
+    // ASSERTED POSITIVELY, and this is the second shape this check has had. The first was a blacklist:
+    // a regex of unanchored forms that no prompt was allowed to match. Review broke it four separate
+    // ways, each at 0 FAILs, and every one was a form the blacklist's author had not thought to list:
+    //   - `git -C ${LEDGER_DIR} worktree add …` — an anchor that is present, well-formed, and points
+    //     at the WRONG DIRECTORY. The blacklist only asked whether SOME anchored command existed in
+    //     the channel, so re-pointing one command was invisible. This is a wrong-repo WRITE reachable
+    //     by a plausible refactor: the exact defect the scenario exists to catch, passing green.
+    //   - `Now run: git worktree add /wrong/place` — no backticks. The blacklist required a literal
+    //     backtick before `git`, and a shell does not.
+    //   - `` `git  worktree add /wrong/place` `` — two spaces. The blacklist hardcoded one.
+    //   - unanchored `git rev-parse` in the Merge prompt, which is worse than a mis-report: the prompt
+    //     uses it to decide "if this is not a git repository, report every id as merged and stop", so
+    //     answering about the agent's cwd FAILS OPEN and reports attempts landed that never landed.
+    //
+    // A blacklist can only ever be as good as its author's imagination, and the escapes above are the
+    // measurement of how good that is. So the predicate is inverted: find EVERY runnable git command
+    // in the prompt, and require each one to carry `-C <root>` naming the root ITSELF. A new escape
+    // now has to be a git command this scanner cannot see at all, rather than merely a spelling the
+    // author forgot — and adding a verb to the vocabulary is a one-token change instead of a new rule.
+    //
+    // This replacement is a STRICT STRENGTHENING, and unlike the last time that word was used in this
+    // file, it was checked rather than asserted: enumerating every form the old blacklist could match
+    // across six surrounding contexts gives 60 inputs, and the new predicate flags all 60. The check
+    // also found the two places where it did NOT, first time round — a bare `git reset` and a bare
+    // `git checkout`, which the vocabulary had required an argument for. `git reset` with no argument
+    // unstages the index of whatever repo the agent is standing in, so that was a real hole and the
+    // two verbs now match on a word boundary instead.
     //
     // SCOPE. An earlier version of this comment excused the Coherence prompt from coverage on the
     // grounds that its agent "runs inside a tree it was already sent to". THAT WAS FALSE, and review
@@ -1380,10 +1402,18 @@ const SCENARIOS = {
     // land attempts correctly and then commit the reconciliation into the wrong repo. It is anchored
     // now and this scenario reads its channel.
     //
-    // Still NOT covered, deliberately: read-only git in the handoff/footprint and retry prompts, and
+    // Still NOT covered, and the list is shorter than it was: the Merge prompt's `rev-parse` and both
+    // its `diff` calls ARE covered now. They were named as acceptable read-only gaps in the previous
+    // round, and that was wrong about `rev-parse` specifically — the Merge prompt uses it to decide
+    // "if this is not a git repository, report every id as merged and stop", so a wrong-repo read
+    // there FAILS OPEN and reports attempts landed that never landed. A read that a control-flow
+    // decision hangs on is not a read.
+    //
+    // What remains uncovered is read-only git in the handoff/footprint and retry prompts, and
     // `git rev-parse HEAD` in the board's hero directive, which is explicitly meant to run in the
-    // process that rendered the frame rather than in REPO_ROOT. A wrong-repo read mis-reports rather
-    // than mis-writes; it is a real gap and it is named here rather than papered over.
+    // process that rendered the frame rather than in REPO_ROOT. Those are named here rather than
+    // papered over — and the test for whether one of them is really benign is the one `rev-parse`
+    // just failed: does anything BRANCH on the answer?
     //
     // The anchor must name REPO_ROOT ITSELF, not merely be syntactically present: `git -C .` and
     // `git -C $PWD` are anchors that protect nothing, and an assertion that accepted them would
@@ -1402,21 +1432,30 @@ const SCENARIOS = {
                        // Only RUNNABLE commands. A bare `git merge` inside "never run `git merge`
                        // yourself" is a reference, not an instruction, and cannot be executed as
                        // written; flagging it would force prose to contort around the assertion.
-                       // Every form below carries the argument that makes it a command.
-                       // Vocabulary widened after review measured `git branch -d` (lowercase) and the
-                       // Coherence writes at 0 FAILs. `add --` and not a bare `add`, because the same
-                       // prompt names `git add -A` and `git add .` in order to FORBID them — flagging
-                       // those would trip on the prohibition itself, which coherenceCommitsItsEdits
-                       // already pins separately.
-                       const unanchored = /`git (worktree (add|remove)|merge --(no-ff|abort)|branch -[dD]|add --|commit -m|checkout|reset)/
+                       // So every verb below carries the argument that makes it a command — that is
+                       // what separates an instruction from a mention, and it is the ONLY thing this
+                       // vocabulary is doing. It is deliberately far wider than the verbs the template
+                       // emits today (review measured 21 non-emitted verbs escaping the old list,
+                       // including `worktree prune`), so that adding an emission later does not
+                       // silently add an uncovered one. No backtick is required and whitespace is
+                       // `\s+`: both were escapes.
+                       const GIT_CMD = /git(?:\s+-C\s+(\S+))?\s+(worktree\s+\w+|merge\s+--\S+|branch\s+-[a-zA-Z]\b|add\s+--|commit\s+-\w|checkout\b|reset\b|rev-parse\s+\S|diff\s+--\S+|clean\s+-\S+|push\s+\S|pull\s+\S|fetch\s+\S|rebase\s+\S|stash\b|cherry-pick\s+\S|revert\s+\S|restore\s+\S|switch\s+\S|apply\s+\S|am\s+\S|tag\s+\S|remote\s+\S|submodule\s+\S|init\b|config\s+\S|update-ref\s+\S|symbolic-ref\s+\S|gc\s+\S|rm\s+\S)/g
+                       // The captured `-C` argument is compared to the root ITSELF. Absent (undefined)
+                       // and wrong (`.`, `$PWD`, LEDGER_DIR, any other repo) fail the same way, which
+                       // is the point: a syntactically present anchor that names the wrong directory
+                       // protects nothing, and the old predicate could not tell those two apart.
+                       const ROOT = '/fixture-repo-root'
+                       const offenders = p => [...p.matchAll(GIT_CMD)].filter(m => m[1] !== ROOT)
                        const anchored = /git -C \/fixture-repo-root /
-                       // BOTH channels are required non-empty and BOTH must carry the anchor. A
-                       // single combined array with a `.some` floor would let one channel lose every
-                       // git command while the other kept the clause true — and the `.every` would
-                       // then range vacuously over the stripped one. Same vacuous-truth shape this
-                       // file already got caught by once, in coherenceNeverDemandsACleanTree.
+                       // ALL THREE channels are required non-empty and all three must carry the
+                       // anchor. `offenders` returning [] is trivially true on a prompt with no git
+                       // in it at all, so the `.some(anchored)` floors are what stop the whole
+                       // predicate going vacuous — strip every git command from a channel and the
+                       // offender clause still passes, but that channel's floor does not. Same
+                       // vacuous-truth shape this file already got caught by once, in
+                       // coherenceNeverDemandsACleanTree.
                        return work.length > 0 && merge.length > 0 && coh.length > 0 &&
-                         [...work, ...merge, ...coh].every(p => !unanchored.test(p)) &&
+                         [...work, ...merge, ...coh].every(p => offenders(p).length === 0) &&
                          work.some(p => anchored.test(p)) &&
                          merge.some(p => anchored.test(p)) &&
                          coh.some(p => anchored.test(p)) } },
