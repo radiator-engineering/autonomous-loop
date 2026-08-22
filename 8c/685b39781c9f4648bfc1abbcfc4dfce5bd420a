@@ -1,0 +1,22 @@
+harness.pin.json
+  s_ea64c4b449125a::t_eeed4674699680 1-6
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_2c4e3cdc065686 1442-1458
+  s_ea64c4b449125a::t_e9380331a09f02 1459-1465,1467-1469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8c685b39781c9f4648bfc1abbcfc4dfce5bd420a",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
