@@ -672,6 +672,32 @@ const SCENARIOS = {
                        const work = h.prompts['work:src/a.rs:12'] || []
                        return work.length > 0 && work.every(p =>
                          p.includes('attempt/') && !p.includes('attempt/src/a.rs:12')) } },
+    // EVERY GIT COMMAND A PROMPT EMITS MUST BE ANCHORED TO REPO_ROOT. `git worktree add` and `git
+    // merge` resolve against the AGENT'S CURRENT DIRECTORY, so an unanchored one operates on whatever
+    // repo the agent happens to be standing in — with exit 0, because a worktree created in the wrong
+    // repo is not an error. Measured: a run created all three of its attempt worktrees in the
+    // operator's own checkout rather than the configured clone, and nothing in this file caught it,
+    // because the prompt contained all the right WORDS. The directives said "(run from the shared
+    // tree)" and named the repo only in TARGET, which is prose the agent may or may not act on.
+    //
+    // Asserted over a BOUNDED VOCABULARY, which is what makes this cheap and paraphrase-proof: the
+    // anchored form is `git -C <root> <verb>`, so a backtick-git followed directly by any of the
+    // git verbs we emit is by construction unanchored. There is no wording that satisfies the
+    // negative while still being wrong — unlike a phrase-shape assertion, the flag is either
+    // between `git` and the verb or it is not.
+    gitDirectivesAreRepoAnchored:
+                   { find: (lens, n) => ({ candidates: n === 1 && lens === 'a' ? [{ where: 'src/a.rs:12', claim: 'x' }] : [] }),
+                     verify: id => pass(id),
+                     expect: (r, h) => {
+                       const emitted = [...(h.prompts['work:src/a.rs:12'] || []), ...(h.prompts['merge'] || [])]
+                       // Only RUNNABLE commands. A bare `git merge` inside "never run `git merge`
+                       // yourself" is a reference, not an instruction, and cannot be executed as
+                       // written; flagging it would force prose to contort around the assertion.
+                       // Every form below carries the argument that makes it a command.
+                       const unanchored = /`git (worktree (add|remove)|merge --(no-ff|abort)|branch -D)/
+                       return emitted.length > 0 &&
+                         emitted.every(p => !unanchored.test(p)) &&
+                         emitted.some(p => p.includes('git -C ')) } },
     // deadFinders' sibling, and the reason the guard reads `Array.isArray(r?.candidates)` rather than
     // `Boolean`: a lens that answers with ONE candidate instead of a list of them. It is truthy, the
     // panel looks complete so no gap is raised, and flatMap hands the object straight through as a
@@ -1206,7 +1232,10 @@ const SCENARIOS = {
                        const prompts = h.prompts['work:r1'] || []
                        return prompts.length >= 2 && prompts.every(p =>
                          p.includes('WORKTREE') && p.includes('/attempts/r1') &&
-                         p.includes('attempt/r1') && p.includes('git worktree add'))
+                         // Anchored form required, same strengthening as mergeRunsAfterPassingVerify:
+                         // the old `includes('git worktree add')` passed on the unanchored command
+                         // that created attempts in the wrong repo.
+                         p.includes('attempt/r1') && /git -C \S+ worktree add/.test(p))
                      } },
     // THE VERIFIER IS POINTED AT THE ISOLATED ATTEMPT, NEVER THE SHARED TREE (same spec): the shared
     // tree has not been touched yet this round when Verify runs (Merge is the phase that changes it),
@@ -1233,7 +1262,11 @@ const SCENARIOS = {
                      expect: (r, h) => {
                        const rounds = h.prompts['merge'] || []
                        const round2 = rounds[1] || ''
-                       return round2.includes('"r1"') && round2.includes('git merge --no-ff') &&
+                       // `git -C <root> merge --no-ff`, not a bare `git merge --no-ff`: the anchor is
+                       // now part of what this scenario pins (see gitDirectivesAreRepoAnchored). This
+                       // is a STRENGTHENING of the original `includes('git merge --no-ff')` — the
+                       // --no-ff flag is still asserted, with the repo anchor required alongside it.
+                       return round2.includes('"r1"') && /git -C \S+ merge --no-ff/.test(round2) &&
                          /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{16}"/.test(round2) &&
                          round2.includes('never build a branch name out of the id yourself')
                      } },

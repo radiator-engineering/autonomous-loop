@@ -133,6 +133,11 @@ function fillTemplate(ledgerDir, src = TEMPLATE_SRC) {
     '<<RUNS_JSONL_PATH>>': join(ledgerDir, 'runs.jsonl'),
     '<<SOURCE>>': 'selfcheck-fixture-queue',
     '<<TARGET>>': 'selfcheck-fixture',
+    // The repo every emitted git command is anchored to. Fills a single-quoted literal like
+    // SKILL_DIR, but the fixture value is a fixed sentinel path rather than a real checkout: the
+    // gate only needs the marker substituted, and gitDirectivesAreRepoAnchored asserts the anchor's
+    // SHAPE (`git -C <something>`), not which repo it names.
+    '<<REPO_ROOT>>': '/selfcheck-fixture-repo',
     '<<RUN_ID>>': 'selfcheck-preflight-run',
     '<<LENSES>>': "['a','b']",
     '<<INVARIANTS>>': "['inv1','inv2']",
