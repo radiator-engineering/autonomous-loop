@@ -92,15 +92,22 @@ const ACTIVITY = LEDGER_DIR + '/activity.jsonl'  // append-only; what the board 
                                           // The driver cannot write it (no filesystem access), so the agents that
                                           // ALREADY run each round append to it. No extra agent, no extra round.
 const ACTIVITY_LOG = true                 // set false only where prompt budget is tighter than observability
-const VERIFIED_COMMITS = true             // commit-per-verified-pass (issue #8 subtask 2): the Ledger step
-                                          // commits a just-passed item's OWN claimed files, one commit per
-                                          // item, before any other step, so the canonical artifact is always
-                                          // the last green commit. Set false only when TARGET is not a git
-                                          // working tree (a design canvas, a live system, a non-VCS artifact)
-                                          // — the instruction is defensive either way (it skips itself if the
-                                          // tree is not a git repo) but the knob keeps a non-git run from
-                                          // paying for an instruction that can only ever no-op. Read directly
-                                          // by writeLedger and retryDirective, never branched on by MODE.
+const VERIFIED_COMMITS = true             // "this run's TARGET is a git working tree" (issue #8
+                                          // subtask 2, evolved by subtask 3, spec: attempt-isolation-
+                                          // design): every worker isolates its attempt in its own git
+                                          // worktree/branch, an independent verifier checks that
+                                          // isolated attempt, and a single sequential Merge phase lands
+                                          // it on the shared tree ONLY on a clean merge — so the
+                                          // canonical artifact is always the last green, MERGED commit,
+                                          // and a failed or conflicted attempt never touches the tree
+                                          // everyone else reads. Set false only when TARGET is not a
+                                          // git working tree (a design canvas, a live system, a non-VCS
+                                          // artifact) — every instruction this knob gates is defensive
+                                          // either way (it skips itself if the tree is not a git repo)
+                                          // but the knob keeps a non-git run from paying for worktrees
+                                          // and merges that can only ever no-op. Read directly by
+                                          // worktreeDirective, worktreeVerifyDirective, the Merge phase,
+                                          // and retryDirective — never branched on by MODE.
 const BRIEF = LEDGER_DIR + '/BRIEF.md'    // the intake, written BEFORE the run and gated by the launch gate
                                           // (scripts/preflight_launch.mjs BRIEF). The handoff carries its
                                           // framing forward so "what this run is for" is the human's answer,
@@ -302,6 +309,26 @@ const VERDICT_KEYS = Object.keys(VERDICT_SCHEMA.properties)
 // reconstruct context the prompt contained. Handing the traps back down costs a few hundred bytes of
 // driver state and removes the only honest reason to open the old file.
 const LEDGER_SCHEMA      = { type: 'object', additionalProperties: false, required: ['hero', 'handoff'], properties: { hero: { type: 'string', enum: ['artifact', 'none', 'absent'] }, handoff: { type: 'string', enum: ['written', 'absent'] }, traps: { type: 'array', items: { type: 'string' } } } }
+// ATTEMPT ISOLATION (issue #8 subtask 3, spec: attempt-isolation-design). A new schema, forced by a
+// failure mode subtask 2's commit-per-pass never had: unlike a commit of files the verifier JUST
+// examined on the SAME tree (which cannot meaningfully conflict), a `git merge` of an isolated
+// attempt's branch CAN genuinely fail to apply cleanly against a mainline that moved since the
+// attempt's worktree branched. The kernel needs a structured answer to keep that fail-closed, the
+// same way `usable(v)` keeps a malformed verdict fail-closed — free text is not enough to safely
+// decide "did this verified pass actually land". `additionalProperties: false` for the same reason
+// every other schema in this file has it: nothing an agent invents here should reach driver state.
+const MERGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['merged', 'conflicts'],
+  properties: {
+    merged:    { type: 'array', items: { type: 'string' } },   // ids that landed on the shared tree
+    conflicts: { type: 'array', items: {                        // ids verify passed but did not land
+      type: 'object', additionalProperties: false, required: ['id', 'evidence'],
+      properties: { id: { type: 'string' }, evidence: { type: 'string' } },
+    } },
+  },
+}
 // THE AUDIT. One cheap agent, after the last round and before the terminal status is computed, that
 // READS the ledger dir and answers about the files. Deliberately TINY — five scalars — because it is
 // the only thing between a reporting gate and the agent it grades, and every field it carries is a
@@ -470,23 +497,23 @@ const MODES = {
     verifyPrompt: (item) => `Independently re-measure criterion ${item.id} in region ${item.region} ` +
       `against the frozen spec at ${SPEC}, re-read verbatim. Pass ONLY on a concrete grounded signal ` +
       `(a test, measurement, or diff). A disqualifying failure is severity=blocker. Cite evidence.`,
-    // Single-owner reconciliation over the whole artifact — see the kernel's step 2b for why it runs
-    // here rather than after verify. One agent, at the escalate tier, because judging whether an
-    // artifact hangs together is the hardest read in the round and the cheapest place to be wrong.
-    // It edits only what the parallel workers broke BETWEEN regions; it may not fix criteria, or it
-    // becomes a second builder whose work nothing independently verifies.
+    // Single-owner reconciliation over the whole artifact — see the kernel's step 3c for why it runs
+    // AFTER Merge (issue #8 subtask 3: relocated from before Verify). One agent, at the escalate tier,
+    // because judging whether an artifact hangs together is the hardest read in the round and the
+    // cheapest place to be wrong. It edits only what just-merged regions broke BETWEEN each other; it
+    // may not fix criteria, or it becomes a second builder whose work nothing independently verifies.
     async coherence(state, worked) {
-      if (worked.length < 2) return   // one region edited, or none: nothing to reconcile
+      if (worked.length < 2) return   // one region landed, or none: nothing to reconcile
       await agent(
-        `Read the ENTIRE artifact at ${SOURCE} and the frozen spec at ${SPEC}, verbatim. Parallel ` +
-        `workers just edited these disjoint regions this round: ` +
-        `${worked.map(w => w.item.region || w.item.id).join(', ')}. Each edit was made without sight ` +
-        `of the others. Reconcile them: fix breaks that exist only BETWEEN regions — a shared helper ` +
-        `changed under another region, duplicated logic, an interface renamed on one side, imports or ` +
-        `types that no longer line up. Do NOT fix a criterion, and do not touch anything that is not a ` +
-        `cross-region break: a separate verifier re-measures every criterion after you, and work you ` +
-        `do inside a region is work nothing independently checks. Return a one-line summary of what ` +
-        `you reconciled, or "none".`,
+        `Read the ENTIRE artifact at ${SOURCE} and the frozen spec at ${SPEC}, verbatim. These items ` +
+        `just MERGED into the shared tree this round, each from its own isolated worktree, without ` +
+        `sight of each other while it worked: ${worked.map(w => w.region || w.id).join(', ')}. ` +
+        `Reconcile them: fix breaks that exist only BETWEEN regions — a shared helper changed under ` +
+        `another region, duplicated logic, an interface renamed on one side, imports or types that no ` +
+        `longer line up. Do NOT fix a criterion, and do not touch anything that is not a cross-region ` +
+        `break: a separate verifier already re-measured every criterion BEFORE it merged, and work you ` +
+        `do inside a region here is work nothing independently checks THIS round. Return a one-line ` +
+        `summary of what you reconciled, or "none".`,
         { ...TIER.escalate, phase: 'Coherence', label: 'coherence' })
     },
     key: (item) => item.id,
@@ -972,10 +999,12 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   state.round++
   state.roundGap = false          // producer blindness is per-round; `unverified` is NOT reset here
   state.roundAccepted = []
-  state.roundPassed = []          // every item whose verdict THIS round was pass — the commit-per-pass
-                                  // list (issue #8 subtask 2). Distinct from roundAccepted: that one is
-                                  // filtered by countsAsProgress/everConfirmed (the archetype's counted
-                                  // metric), this one is the raw verify predicate — a re-verified item
+  state.roundPassed = []          // every item verified pass AND landed (merged onto the shared tree)
+                                  // this round — evidence text for claims.jsonl, not a git operation
+                                  // of its own any more (issue #8 subtask 3 moved landing to Merge).
+                                  // Distinct from roundAccepted: that one is filtered by
+                                  // countsAsProgress/everConfirmed (the archetype's counted metric),
+                                  // this one is the raw verify-AND-merge predicate — a re-verified item
                                   // that no longer counts as NEW progress still did real, passing work
                                   // on the artifact and still belongs at HEAD.
   log(`Round ${state.round} — confirmed ${state.confirmed.length}, open ${state.open.size}, dry ${state.dry}`)
@@ -995,27 +1024,70 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   // 2. WORK: fresh-context workers, one per item, in parallel. A worker that throws → null.
   //    An item carrying a blocker (from the frontier), flagged for escalation, or STUCK gets the
   //    strong tier; a stuck item also gets the change-approach directive appended to its prompt.
-  //    An item with a prior failed attempt also gets the dirty-tree warning, since its retry worker
-  //    starts in the same shared tree the dead attempt half-edited.
+  //    Every worker isolates its attempt in its own git worktree/branch (issue #8 subtask 3, spec:
+  //    attempt-isolation-design) — see worktreeDirective — so a dead or refuted attempt never touches
+  //    the shared tree at all; there is nothing left for a retry to inherit.
   //    Every worker also claims its footprint (files it will touch) before editing — see footprintDirective.
   phase('Work')
   const worked = await parallel(batch.map(item => () =>
-    agent(mode.workerPrompt(item, state) + footprintDirective(item) + retryDirective(item.id) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
+    agent(mode.workerPrompt(item, state) + worktreeDirective(item) + footprintDirective(item) + retryDirective(item.id) + stuckDirective(item.id) + activityDirective('Work', `work:${item.id}`),
       { ...((item.severity === 'blocker' || state.escalate.has(item.id) || isStuck(item.id)) ? TIER.escalate : TIER.work),
         phase: 'Work', label: `work:${item.id}` })
       .then(out => ({ item, out }))
   ))
 
-  // 2b. COHERENCE: an OPTIONAL single-owner pass over the WHOLE artifact, before anything is verified.
-  //     Workers edit disjoint regions in parallel and each one can be locally right while the artifact
-  //     as a whole stops hanging together — a shared helper changed under one region's feet, two
-  //     regions solving the same problem twice, an interface renamed on one side. Per-region verifying
-  //     cannot see that by construction: every verifier is scoped to the region it was given, so a
-  //     globally incoherent artifact passes region by region.
-  //
-  //     It runs BEFORE verify so the verifiers judge the reconciled artifact rather than the raw merge
-  //     of parallel edits — otherwise the pass fixes things that were already recorded as passing and
-  //     the ledger describes an artifact that no longer exists.
+  // 3. VERIFY: a DIFFERENT agent checks each worker's output against the item's done-criterion,
+  //    INSIDE that attempt's isolated worktree — never against the shared tree, which has not
+  //    changed yet this round (see worktreeVerifyDirective).
+  //    FAIL-CLOSED: a crashed worker, a crashed verifier, and a verdict that came back unreadable
+  //    (see `usable`) are all NOT a pass.
+  //    Its item returns to the frontier (bounded by MAX_RETRIES) and the round is flagged as an
+  //    unverified gap, so no positive terminal status can fire while a mandate is unverified.
+  phase('Verify')
+  const verdicts = await parallel(worked.map(w => () => {
+    if (w == null || w.out == null) return null   // worker crash → unverified
+    return agent(mode.verifyPrompt(w.item, w.out, state) + worktreeVerifyDirective(w.item) + activityDirective('Verify', `verify:${w.item.id}`),
+      { ...TIER.verify, phase: 'Verify', label: `verify:${w.item.id}`, schema: VERDICT_SCHEMA })
+  }))
+
+  // 3b. MERGE (issue #8 subtask 3): ONE sequential agent, after Verify, before anything treats a
+  //     verified pass as landed. Same reason subtask 2 put commit-per-pass in the Ledger step and not
+  //     the (parallel) Verify step: two attempts merging into the shared tree at the same wall-clock
+  //     time race the same .git/index a parallel `git commit` would, and here the stakes are higher —
+  //     a raced MERGE can corrupt more than a raced commit can. Only items Verify just passed are
+  //     worth trying; skipped entirely when none did (same cost discipline as Coherence's own
+  //     `worked.length < 2` guard) and a no-op passthrough when VERIFIED_COMMITS is off (no worktrees
+  //     were ever created, so there is nothing to merge).
+  phase('Merge')
+  const toMerge = batch.filter((item, i) => usable(verdicts[i]) && verdicts[i].pass)
+  const mergeResult = (VERIFIED_COMMITS && toMerge.length)
+    ? await agent(
+        `This round's verifiers passed ${toMerge.length} attempt(s): ${JSON.stringify(toMerge.map(m => m.id))}. ` +
+        `First check whether the shared tree is inside a git repository (\`git rev-parse ` +
+        `--is-inside-work-tree\`); if it is not, report every id above under "merged" (there is ` +
+        `nothing to merge against) and stop. Otherwise, for EACH id above, IN ORDER, from the shared ` +
+        `tree: \`git merge --no-ff attempt/<id> -m "<id>: merge verified attempt"\`. If it merges ` +
+        `cleanly, remove that attempt's worktree (\`git worktree remove --force ` +
+        `${LEDGER_DIR}/attempts/<id>\`) and report the id under "merged". If it conflicts, run ` +
+        `\`git merge --abort\`, leave the attempt's worktree in place (its branch still holds the ` +
+        `work — a retry rebuilds it fresh; this one is just not landing THIS round), and report the ` +
+        `id under "conflicts" with the conflicted file list (\`git diff --name-only --diff-filter=U\` ` +
+        `BEFORE the abort) as its evidence. Never leave the repo mid-merge: always resolve to a clean ` +
+        `\`git status\` — either a completed merge commit or an aborted one — before you finish.`,
+        { ...TIER.mechanical, phase: 'Merge', label: 'merge', schema: MERGE_SCHEMA })
+    : { merged: toMerge.map(m => m.id), conflicts: [] }
+  // FAIL-CLOSED, same posture as `usable(v)`: a crashed or malformed Merge agent (missing/non-array
+  // "merged") is treated as NOTHING landed this round, never as "probably fine" — a verified pass the
+  // kernel cannot confirm actually reached the shared tree is not counted, not committed, not resolved.
+  const merged = new Set((mergeResult && Array.isArray(mergeResult.merged)) ? mergeResult.merged : [])
+
+  // 3c. COHERENCE (issue #8 subtask 3: relocated): an OPTIONAL single-owner pass over the WHOLE
+  //     artifact, reconciling attempts that just MERGED this round rather than a raw parallel edit of
+  //     the shared tree. Workers no longer edit the shared tree at all — each works in its own
+  //     isolated worktree, so before Merge runs the shared tree has not changed yet this round; there
+  //     is nothing to reconcile until AFTER a round's passing attempts have actually landed on the one
+  //     tree that could show a cross-region break. Only items that both verified pass AND merged are
+  //     worth passing in: a failed or conflicted attempt changed nothing on the shared tree.
   //
   //     Optional by design: only an archetype whose workers EDIT ONE SHARED ARTIFACT needs it. A
   //     saturator's finders write nothing and an exhauster's items are independent by construction, so
@@ -1027,21 +1099,10 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   //     would have, and the per-item verdicts still decide everything. Raising a gap would let a flaky
   //     reconciler pin an otherwise-clean run to `blocked`.
   if (mode.coherence) {
+    const landed = batch.filter((item, i) => usable(verdicts[i]) && verdicts[i].pass && merged.has(item.id))
     phase('Coherence')
-    await mode.coherence(state, worked.filter(w => w != null && w.out != null))
+    await mode.coherence(state, landed)
   }
-
-  // 3. VERIFY: a DIFFERENT agent checks each worker's output against the item's done-criterion.
-  //    FAIL-CLOSED: a crashed worker, a crashed verifier, and a verdict that came back unreadable
-  //    (see `usable`) are all NOT a pass.
-  //    Its item returns to the frontier (bounded by MAX_RETRIES) and the round is flagged as an
-  //    unverified gap, so no positive terminal status can fire while a mandate is unverified.
-  phase('Verify')
-  const verdicts = await parallel(worked.map(w => () => {
-    if (w == null || w.out == null) return null   // worker crash → unverified
-    return agent(mode.verifyPrompt(w.item, w.out, state) + activityDirective('Verify', `verify:${w.item.id}`),
-      { ...TIER.verify, phase: 'Verify', label: `verify:${w.item.id}`, schema: VERDICT_SCHEMA })
-  }))
 
   // 4. LEDGER: advance state in CODE from the verdicts. Nothing here trusts a worker's self-report.
   phase('Ledger')
@@ -1059,6 +1120,17 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
     // Adjudicated. A refutation closes the mandate exactly as a pass does — what an open `unverified`
     // entry means is "nobody could read a verdict", not "the verdict went against us".
     state.unverified.delete(item.id)
+    if (v.pass && VERIFIED_COMMITS && !merged.has(item.id)) {
+      // VERIFIED, but did not land (issue #8 subtask 3): a real merge conflict, or a Merge agent that
+      // crashed/answered unreadably. Treated exactly like a refuted verdict, not like a crash — the
+      // attempt's work was real, it just does not apply cleanly to a mainline that moved. It retries
+      // into a FRESH worktree off the (by then updated) mainline — worktreeDirective's unconditional
+      // reset-and-recreate already does that on every dispatch, so no separate instruction is needed.
+      bumpFail(item.id)
+      state.seen.add(key)
+      mode.retry(state, item)
+      continue
+    }
     if (v.pass) {
       // Every pass, whether or not it counts toward the archetype's tally — see the field comment
       // on roundPassed above. Evidence text is best-effort for the commit message the ledger step
@@ -1542,25 +1614,21 @@ function isStuck(id) { return (state.fails.get(id) || 0) >= STUCK_AFTER }
 function retryDirective(id) {
   // Same byte-identity discipline as stuckDirective: a first attempt returns '' so a run resumed
   // with resumeFromRunId replays it from cache. The string appears only once an item has a failed
-  // attempt behind it — the exact moment the shared tree may hold that attempt's unfinished edits.
-  // VERIFIED_COMMITS is fixed for the whole run, so which branch fires below never varies attempt to
-  // attempt — the byte-identity the `stuck` scenario checks (attempts 2..STUCK_AFTER share one prompt)
-  // holds either way.
+  // attempt behind it. VERIFIED_COMMITS is fixed for the whole run, so which branch fires below never
+  // varies attempt to attempt — the byte-identity the `stuck` scenario checks (attempts 2..STUCK_AFTER
+  // share one prompt) holds either way.
   if (!((state.fails.get(id) || 0) > 0)) return ''
   if (VERIFIED_COMMITS) {
-    // Commit-per-verified-pass (issue #8 subtask 2, spec: verified-commits-design) makes this
-    // UNCONDITIONAL rather than evaluative: a pass is committed the round it happens, so the working
-    // tree can never hold a verified pass that is not already at HEAD. Anything still sitting on this
-    // item's OWN claimed files is, by construction, this item's own dead attempt — nothing to judge,
-    // nothing worth re-deriving; a genuine pass would already be a commit.
-    return `\n\nRETRY: a previous attempt at this item failed. Every verified pass is committed the ` +
-      `round it happens, so nothing of value can be sitting uncommitted on this item's claimed files. ` +
-      `Read ${LEDGER_DIR}/footprint.jsonl, take the union of "files" across every claim line for this ` +
-      `item, and reset each one UNCONDITIONALLY before you start: git checkout -- <path> for a ` +
-      `tracked file the dead attempt modified or deleted, git clean -f -- <path> for one it created ` +
-      `and never committed. Do not inspect the diff for anything worth keeping — there is nothing to ` +
-      `evaluate. (This only covers files THIS item claimed; it says nothing about a different item's ` +
-      `files even if they happen to overlap.) Then re-derive the item from a clean tree.`
+    // Issue #8 subtask 3 (spec: attempt-isolation-design) shrinks this to a short, constant note.
+    // Subtask 2's "read footprint, checkout, clean" text assumed a shared tree with leftovers worth
+    // resetting. Attempt isolation removes that premise a second time: there IS no leftover on the
+    // shared tree to reset, because the dead attempt never touched it — its entire half-finished
+    // state lived in a worktree worktreeDirective already destroys and rebuilds THIS dispatch,
+    // unconditionally, whether or not this is a retry. Nothing left here to judge or instruct.
+    return `\n\nRETRY: a previous attempt at this item did not land — either it failed verification ` +
+      `or its merge conflicted. You are starting in a FRESH, isolated worktree (see WORKTREE below) ` +
+      `that carries none of the prior attempt's edits; there is nothing to inspect or reset. ` +
+      `Re-derive the item from a clean slate.`
   }
   return `\n\nRETRY: a previous attempt at this item failed, and the working tree may still hold its ` +
     `half-finished edits. Read ${LEDGER_DIR}/footprint.jsonl and find this item's lines first: a ` +
@@ -1595,6 +1663,45 @@ function footprintDirective(item) {
     `claim line. As your LAST action, append {"ts":"<ISO-8601 now>","item":${JSON.stringify(item.id)},` +
     `"event":"close","status":"<one of: done, noop, blocked>","note":"<one line: where this attempt ended>"}. ` +
     `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
+}
+function attemptWorktree(id) {
+  // Deterministic, pure function of LEDGER_DIR (Config) and the item id — every phase that needs to
+  // find an attempt's worktree (worker, verifier, Merge) can derive it without a new record, the same
+  // way footprintDirective's file lives at a path derived from LEDGER_DIR alone. Lives under
+  // LEDGER_DIR, not inside TARGET's own tree, alongside footprint.jsonl/claims.jsonl/activity.jsonl —
+  // this run's own bookkeeping directory, not the artifact being worked on.
+  return { path: `${LEDGER_DIR}/attempts/${id}`, branch: `attempt/${id}` }
+}
+function worktreeDirective(item) {
+  // Issue #8 subtask 3 (spec: attempt-isolation-design). VERIFIED_COMMITS-gated, same as every other
+  // git-specific instruction in this kernel: '' on a non-git TARGET, which gets none of this and
+  // falls back to the shared-tree discipline subtasks 1/2 already establish for it.
+  if (!VERIFIED_COMMITS) return ''
+  const { path, branch } = attemptWorktree(item.id)
+  // UNCONDITIONAL on every dispatch — first attempt and every retry alike, no branch on
+  // state.fails — which is what makes this SIMPLER to hold byte-identical than footprintDirective's
+  // own constancy: there is no separate "this is a retry" text at all, because the reset-and-recreate
+  // step below is exactly what a retry needs and is harmless (a no-op remove) when nothing exists yet.
+  return `\n\nWORKTREE (attempt isolation): this attempt is isolated in its own git worktree, never ` +
+    `the shared tree directly. Before any edit: if ${path} already exists (a dead or failed prior ` +
+    `attempt), remove it and its branch first — \`git worktree remove --force ${path}\` then ` +
+    `\`git branch -D ${branch}\` if the branch still exists — so you always start from a clean slate. ` +
+    `Then create a fresh one off the CURRENT mainline: \`git worktree add ${path} -B ${branch} HEAD\` ` +
+    `(run from the shared tree). Do every edit, test, and commit INSIDE ${path} — never touch the ` +
+    `shared tree directly, and never run \`git merge\` yourself; merging only happens after an ` +
+    `independent verifier passes this attempt. Commit your work there as you go, on ${branch}, so ` +
+    `the branch actually holds something to merge when it passes — an attempt with no commits is ` +
+    `indistinguishable from one that did nothing. Footprint claims (below) name files relative to ${path}.`
+}
+function worktreeVerifyDirective(item) {
+  // Same gate as worktreeDirective — a non-git TARGET never created a worktree, so there is nothing
+  // for a verifier to be pointed at.
+  if (!VERIFIED_COMMITS) return ''
+  const { path, branch } = attemptWorktree(item.id)
+  return `\n\nWORKTREE: this attempt happened in an isolated worktree, not the shared tree — verify ` +
+    `INSIDE ${path} (cd there before running any check), never against the shared tree, which has not ` +
+    `been updated with this attempt yet. If ${path} does not exist, or ${branch} has no commits, that ` +
+    `is itself a FAIL — the worker never produced a real attempt — say so as your evidence.`
 }
 function activityDirective(phase, label) {
   // Mid-round visibility, paid for by agents that were going to run anyway. The driver has no
@@ -1654,7 +1761,13 @@ async function writeLedger(state) {
     last_reported: state.reported,
   }
   const newClaims = (state.roundAccepted || []).map(a => ({ id: a.id, evidence: a.evidence || a.claim || '' }))
-  const passed = state.roundPassed || []   // this round's verified passes — commit-per-pass, see below
+  // `state.roundPassed` (this round's verified-AND-landed passes) no longer drives a commit here.
+  // Issue #8 subtask 3 (spec: attempt-isolation-design) REPLACES commit-per-verified-pass with the
+  // Merge phase, which now runs earlier in the round, right after Verify: a worker commits its own
+  // work inside its isolated worktree as it goes, and Merge already lands those commits on the shared
+  // tree the moment an item verifies pass. By the time the Ledger step runs, a landed item's commits
+  // are already at HEAD — nothing left for this agent to stage or commit. `state.roundPassed` is kept
+  // only as evidence text for `claims.jsonl` (via `newClaims`, above); it drives no git operation here.
   // The blocked set, BOUNDED — the handoff's "Open blockers" section needs ids and what is stuck, and
   // the driver is the only place that knows them. Passed as a slice for the same reason the explorer
   // passes a recent tail rather than the whole grounded log (kernel #6): the driver's context stays
@@ -1664,26 +1777,6 @@ async function writeLedger(state) {
   }))
   const overflow = openBlockers(state).length - blockers.length
   const r = await agent(
-    // COMMIT-PER-VERIFIED-PASS (issue #8 subtask 2, spec: verified-commits-design). Done FIRST, and by
-    // THIS agent alone, because the Ledger step is the one point in the round every verifier's answer
-    // has already funneled through and only ONE agent runs — commits from parallel verifiers racing
-    // for the same .git/index would silently drop a genuine pass, which is the exact failure mode this
-    // exists to close. Scoped to each item's OWN claimed files (never a bare `git add -A`, which would
-    // sweep in a different item's still-uncommitted work from this same BATCH>1 round) and one commit
-    // per item — never a combined commit for the round — so each pass stays independently revertible.
-    (VERIFIED_COMMITS && passed.length
-      ? `Before anything else: this round verified ${passed.length} item(s) as PASS: ` +
-        `${JSON.stringify(passed.map(p => p.id))}. First check whether this working tree is inside a ` +
-        `git repository (\`git rev-parse --is-inside-work-tree\`); if it is not, skip commits entirely ` +
-        `and note that in your report — do not fail this step over it. If it is, then for EACH id above, ` +
-        `in order: read ${LEDGER_DIR}/footprint.jsonl and take the union of "files" across every claim ` +
-        `line for that id (this round's claim, or an earlier round's if this pass followed a retry); ` +
-        `run \`git add -A -- <those files>\` (NEVER a bare \`git add -A\` with no pathspec) and then ` +
-        `\`git commit -m "<id>: <one-line summary>"\`, using this evidence for the message where useful: ` +
-        `${JSON.stringify(passed)}. One commit per id, never one commit for the whole round. If an id's ` +
-        `footprint claim is empty or missing, commit nothing for it and say so in your report rather ` +
-        `than guessing which files it touched.\n\n`
-      : '') +
     // TURN ECONOMY, stated first because it is the instruction most often ignored. Everything this
     // agent needs is already in this prompt; the measured failure mode is an agent that opens
     // progress.json and HANDOFF.md anyway to reconstruct context it was handed, then spends thirty
