@@ -12,7 +12,7 @@ Two real loops failed this week and **no gate we ship could have caught either o
 |---|---|---|---|
 | `scripts/eval_driver.mjs` | this repo (public) | a filled driver that misbehaves under scripted adversity | hard gate |
 | `scripts/lint_design.mjs` | this repo (public) | a loop design that will fail for predictable reasons | hard fail + warnings |
-| `autonomous-loop-bench` | separate **private** repo | regressions against real recorded runs | truth-verdict diff |
+| the regression corpus | separate **private** location | regressions against real recorded runs | truth-verdict diff |
 
 The split is deliberate: **the harness is public, the corpus is private.** The recorded runs contain internal paths, hostnames, and project material that cannot ship in this repo.
 
@@ -89,9 +89,9 @@ Same wiring as Piece 1: `run_gate` line, red-half self-test, bundle repack.
 
 ---
 
-## Piece 3 — `autonomous-loop-bench`: the private corpus that keeps both honest
+## Piece 3 — the private corpus that keeps both honest
 
-A separate private repo. Layout:
+A separate private location, not named here. Layout:
 
 ```
 corpus/<run-name>/
@@ -104,7 +104,7 @@ run.mjs              # replays replay_gates + eval_driver + lint_design over eve
 
 `EXPECTED.json` is the point: **a human writes down what was actually true** — "this run was healthy," "this jam verdict is wrong" — and `run.mjs` diffs the tools' verdicts against it. Synthetic scenarios test what we imagined; the corpus tests what happened.
 
-**Seeded with the two colleague runs, and born red on purpose:** the jam rule mis-verdicts both. That red is the bench doing its job — it is the standing, mechanical statement of the open defect, and it goes green only when the retune (fast-follow #1) actually fixes it against reality. New failed runs get added as they occur; the corpus only grows.
+**Seeded with two real recorded runs, and born red on purpose:** the jam rule mis-verdicts both. That red is the bench doing its job — it is the standing, mechanical statement of the open defect, and it goes green only when the retune (fast-follow #1) actually fixes it against reality. New failed runs get added as they occur; the corpus only grows.
 
 ---
 
