@@ -495,9 +495,7 @@ git commit -m "Read a loop design and name the predictable death before launch"
 git add -A && git commit -m "Say where the new gates sit and which rule guards their wiring"
 git push -u origin loop-eval-harness
 gh pr create --title "Test generated drivers against a scripted world before they spend real budget" \
-  --body "Implements docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md: eval_driver.mjs (behavioral battery over any filled driver, unspoofable fails closed, mutant-proven red halves), lint_design.mjs (L1 output budget, L2 ceremony economics, L3 evidence contract [hard], L4 decidability, L5 dual source of truth), both wired as gates and bundled. The out-of-repo regression corpus lands separately.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+  --body "Implements docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md: eval_driver.mjs (behavioral battery over any filled driver, unspoofable fails closed, mutant-proven red halves), lint_design.mjs (L1 output budget, L2 ceremony economics, L3 evidence contract [hard], L4 decidability, L5 dual source of truth), both wired as gates and bundled. The out-of-repo regression corpus lands separately."
 ```
 
 ---
@@ -517,6 +515,6 @@ written by hand. Keep those contracts stable; that is the whole public obligatio
 
 ## Self-Review (performed while writing)
 
-- **Spec coverage:** eval_driver battery + scenario table → Tasks 2–3 (all 8 spec scenarios present: happyPath, contextDeathWorker, contextDeathEveryone, lyingVerifier, budgetCliff, runawayUnbounded, deadAuditor, witnessRungs). Label-keyed spoofing + `unspoofable` fail-closed → Tasks 1–2. Self-test + mutants + red halves → Task 3. `run_gate` + repack → Tasks 3–4. lint L1–L5 with the spec's severities → Task 4. Private bench: layout, `EXPECTED.json` truth schema, `run.mjs`, CI, seeded born-red → Task 6. Deferred items (jam retune, dirty-tree reset): correctly absent, guarded by the "never edit the template" global constraint.
-- **Type consistency:** `spoofWorld` return fields consumed by Tasks 2/4 (`unknownLabels`, `promptBytes`, `disk`, `counts`, `models`) all defined in Task 1. `--json` contracts produced in Tasks 2/4 match what Task 6's `run.mjs` parses (`verdict`, `hard_failures`, `warnings`).
-- **Known soft spots, flagged not hidden:** two strings must be copied byte-exact from live files rather than from this plan (the mutant `from` lines in Task 3; the `replay_gates` verdict-line format in Task 6 Step 3) — both are marked at the point of use with an existence guard so a drifted string fails loudly.
+- **Spec coverage:** eval_driver battery + scenario table → Tasks 2–3 (all 8 spec scenarios present: happyPath, contextDeathWorker, contextDeathEveryone, lyingVerifier, budgetCliff, runawayUnbounded, deadAuditor, witnessRungs). Label-keyed spoofing + `unspoofable` fail-closed → Tasks 1–2. Self-test + mutants + red halves → Task 3. `run_gate` + repack → Tasks 3–4. lint L1–L5 with the spec's severities → Task 4. The spec's Piece 3 (the out-of-repo regression corpus — its layout, truth schema, replayer, and CI) is deliberately NOT covered by any task here; Task 6 records that it is tracked outside this repo and why. What this plan owes it is the three `--json` interfaces, covered by Tasks 2 and 4. Deferred items (jam retune, dirty-tree reset): correctly absent, guarded by the "never edit the template" global constraint.
+- **Type consistency:** `spoofWorld` return fields consumed by Tasks 2/4 (`unknownLabels`, `promptBytes`, `disk`, `counts`, `models`) all defined in Task 1. `--json` contracts produced in Tasks 2/4 are the stable surface any out-of-repo replayer parses (`verdict`, `hard_failures`, `warnings`); they are fixed here and must not drift.
+- **Known soft spots, flagged not hidden:** two strings must be copied byte-exact from live files rather than from this plan (the mutant `from` lines in Task 3; the `replay_gates` verdict-line format, which an out-of-repo replayer parses) — both are marked at the point of use with an existence guard so a drifted string fails loudly.

@@ -6,7 +6,7 @@
 
 **Architecture:** One new prompt directive (`footprintDirective`) in the work dispatch, one sentence added to `retryDirective`, one instruction added to the finalize prompt. All three follow the template's existing cache discipline: the driver interpolates nothing that varies per attempt.
 
-**Tech Stack:** Node ≥ 18, plain ESM scripts, no dependencies. Repo: `/Users/jjmartin/Development/autonomous-loop`, branch `ownership-footprint`.
+**Tech Stack:** Node ≥ 18, plain ESM scripts, no dependencies. Repo: this one, branch `ownership-footprint`.
 
 **Spec:** `docs/superpowers/specs/2026-08-21-ownership-footprint-design.md` — the binding authority; conflicts in this plan resolve against it.
 
