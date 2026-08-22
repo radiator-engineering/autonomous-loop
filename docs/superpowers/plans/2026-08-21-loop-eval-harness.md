@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deterministic, zero-token testing of *filled* loop drivers: a behavioral battery that runs any generated driver against a scripted world (`eval_driver.mjs`), a design linter that reads a driver + its BRIEF and names predictable deaths (`lint_design.mjs`), and a private corpus repo (`autonomous-loop-bench`) that replays all gates against real recorded runs with human-written truth verdicts.
+**Goal:** Deterministic, zero-token testing of *filled* loop drivers: a behavioral battery that runs any generated driver against a scripted world (`eval_driver.mjs`), a design linter that reads a driver + its BRIEF and names predictable deaths (`lint_design.mjs`), and a regression corpus of real recorded runs, with human-written truth verdicts, kept private outside this repo.
 
 **Architecture:** Both new public tools reuse the mocked-Workflow-harness mechanism already proven in `autonomous-loop/scripts/selfcheck_loops.mjs` — the driver source is wrapped in an `AsyncFunction` and run with spoofed `agent/parallel/pipeline/log/phase/budget`, where the spoofed `agent()` routes on the call's `label`. That routing logic is extracted into a shared module (`scripts/lib/spoof_world.mjs`) so `eval_driver` (battery) and `lint_design` (L2 needs measured prompt bytes from one spoofed run) both consume it. The private bench is a separate repo that clones this one in CI and diffs tool verdicts against `EXPECTED.json` truth files.
 
@@ -17,8 +17,8 @@
 - **`run_gate` wiring:** every new gate script gets a `run_gate autonomous-loop <script>` line in `install.sh` in the same change (CONTRIBUTING rule 1; the enforcement loop only auto-checks `selfcheck_*.mjs` names, so for `eval_driver.mjs`/`lint_design.mjs` the line must be added manually and deliberately).
 - **Repack after touching anything under `autonomous-loop/` except `evals/` and `dist/`:** run `./install.sh --pack` from the repo root (CONTRIBUTING rule 2). If `git status` shows only timestamp churn in the `.skill` when you didn't touch bundle-carried files, restore it with `git checkout -- autonomous-loop/dist/autonomous-loop.skill`.
 - **Commits:** no Claude attribution / `Co-Authored-By` lines (user's global rule). Message style in this repo is a plain-English sentence, e.g. `Name the witness gate's reason, price the run with one knob`.
-- **Verification command for every task:** `./install.sh --check` from repo root must exit 0 (except the bench repo tasks, which have their own `run.mjs`).
-- **The corpus is private.** Nothing from `/Users/jjmartin/Desktop/loop.zip`, the postmortems, or the extracted ledgers may be committed to the public `autonomous-loop` repo — paths, hostnames, prompts, artifacts, all of it. It goes only into `radiator-engineering/autonomous-loop-bench` (private).
+- **Verification command for every task:** `./install.sh --check` from repo root must exit 0 (the out-of-repo corpus is verified on its own).
+- **The corpus is private.** Nothing from the recorded runs, the postmortems, or the extracted ledgers may be committed to this repo — paths, hostnames, prompts, artifacts, all of it. Neither the corpus nor its location is named here.
 - **Never edit `assets/loop-template.js` in this plan.** Both known kernel defects (jam rule, dirty-tree retry) are explicitly deferred; the spec's bench is *supposed* to be red on the jam rule.
 
 ### Facts about the codebase you must not rediscover wrong
@@ -233,7 +233,7 @@ const SCENARIOS = {
       : r.converged === true && r.confirmed > 0 && r.finalized === true,
   },
   // ONE worker dies every time it is dispatched → its item must go blocked/unverified within
-  // patience; the run must not livelock (the recorded impeccable-radix failure: 5 deaths + 1 kill)
+  // patience; the run must not livelock (one recorded failure: 5 deaths + 1 kill)
   contextDeathWorker: {
     skip: m => m === 'sentinel',                             // sentinel workers are repairs; poll drives it
     overlay: s => ({ ...s, work: (id, n) => (id.endsWith('1') ? null : 'done') ,
@@ -495,142 +495,25 @@ git commit -m "Read a loop design and name the predictable death before launch"
 git add -A && git commit -m "Say where the new gates sit and which rule guards their wiring"
 git push -u origin loop-eval-harness
 gh pr create --title "Test generated drivers against a scripted world before they spend real budget" \
-  --body "Implements docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md: eval_driver.mjs (behavioral battery over any filled driver, unspoofable fails closed, mutant-proven red halves), lint_design.mjs (L1 output budget, L2 ceremony economics, L3 evidence contract [hard], L4 decidability, L5 dual source of truth), both wired as gates and bundled. The private corpus repo lands separately.
+  --body "Implements docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md: eval_driver.mjs (behavioral battery over any filled driver, unspoofable fails closed, mutant-proven red halves), lint_design.mjs (L1 output budget, L2 ceremony economics, L3 evidence contract [hard], L4 decidability, L5 dual source of truth), both wired as gates and bundled. The out-of-repo regression corpus lands separately.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 ```
 
 ---
 
-### Task 6: `autonomous-loop-bench` — private repo scaffold, corpus, truth files
+### Task 6: out-of-repo regression corpus (tracked outside this repo)
 
-**Files (new repo `/Users/jjmartin/Development/autonomous-loop-bench`):**
-- Create: `README.md`, `run.mjs`, `.github/workflows/bench.yml`, `.gitignore`
-- Create: `corpus/impeccable-radix/{driver.js,ledger/**,EXPECTED.json,NOTES.md}`
-- Create: `corpus/design-system/{driver.js,ledger/**,EXPECTED.json,NOTES.md}`
+The third piece of the spec — the regression corpus of real recorded runs, with
+human-written truth verdicts — is deliberately **not** built in this repo and is not
+planned here. The recorded runs carry internal paths, hostnames, and project material,
+so neither the corpus nor its location belongs in a public plan.
 
-**Interfaces:**
-- Consumes: the public repo's `scripts/replay_gates.mjs <ledger-dir>` (per-run verdict lines on stdout), `scripts/eval_driver.mjs <driver> --json`, `scripts/lint_design.mjs <driver> <brief> --json` (Task 2/4 `--json` contracts).
-- Produces: `node run.mjs [--harness <path-to-public-repo>]` → exit 0 iff every corpus entry's tool verdicts match its `EXPECTED.json`. Default harness path: `../autonomous-loop`, overridable by `AUTONOMOUS_LOOP` env var (CI sets it).
-
-- [ ] **Step 1: Scaffold and import the corpus**
-
-```bash
-mkdir -p ~/Development/autonomous-loop-bench && cd ~/Development/autonomous-loop-bench && git init
-mkdir -p corpus && unzip ~/Desktop/loop.zip -d /tmp/bench-import
-# copy each run: the driver verbatim, the FULL ledger dir (progress.json, HANDOFF.md, claims.jsonl,
-# artifacts/, activity.jsonl if present). Copy the two postmortems in as corpus/<run>/NOTES.md —
-# they are the provenance of the truth verdicts.
-```
-
-Inspect the unzipped layout first (`find /tmp/bench-import -maxdepth 3`) — do not guess subdirectory names. `POSTMORTEM-impeccable-radix.md` is at `~/Desktop/POSTMORTEM-impeccable-radix.md`; the design-system retro is inside the zip (`design-retro-2026-08-21.md`).
-
-- [ ] **Step 2: Write `EXPECTED.json` for both runs — truth, not tool output**
-
-Schema (one file per run):
-
-```json
-{
-  "run": "design-system",
-  "truth": "What actually happened, one paragraph, written from NOTES.md.",
-  "witness": { "expected": "<verdict>", "currently_reports": "<verdict>", "known_defect": "jam-rule" },
-  "eval_driver": { "expected": "unspoofable", "reason": "predates the witness-gate template generation" },
-  "lint_design": { "expected_hard_failures": 0, "expected_warnings_at_least": 1 }
-}
-```
-
-Fill the `expected` witness verdicts from the postmortems, under one non-negotiable constraint: **neither run's truth is `evidence_regressed`** — design-system was a healthy 40-round camera with benign duplicate frames (110 captures, 77 distinct), impeccable-radix's camera was fine while the run itself was stuck. Run `node <harness>/scripts/replay_gates.mjs corpus/<run>/ledger` and record what the tool *currently* says into `currently_reports` — on these two ledgers it says `regressed`, and that mismatch **is the born-red case**: the bench's standing, mechanical statement of the open jam-rule defect. Do not "fix" the red by editing `expected` to match the tool; `expected` is the human's column.
-
-For `eval_driver.expected`: both drivers predate the current template's labels — run the battery once on each, and record the honest outcome (`unspoofable` is the likely and acceptable one; whatever it is, pin it).
-
-- [ ] **Step 3: Write `run.mjs`**
-
-```js
-#!/usr/bin/env node
-// run.mjs — replay every gate the public repo ships against every recorded run, and diff the
-// verdicts against EXPECTED.json. Red here means one of two things, and the output says which:
-// a tool regressed against reality, or a KNOWN defect is still open (known_defect named).
-import { readdirSync, readFileSync, existsSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
-
-const HARNESS = resolve(process.env.AUTONOMOUS_LOOP ||
-  process.argv.includes('--harness') ? process.argv[process.argv.indexOf('--harness') + 1] : '../autonomous-loop')
-const SCRIPTS = join(HARNESS, 'autonomous-loop', 'scripts')
-if (!existsSync(join(SCRIPTS, 'replay_gates.mjs'))) { console.error(`no harness at ${HARNESS}`); process.exit(2) }
-
-const run = (script, args) => {
-  try { return { out: execFileSync('node', [join(SCRIPTS, script), ...args], { encoding: 'utf8', timeout: 120_000 }), code: 0 } }
-  catch (e) { return { out: (e.stdout || '') + (e.stderr || ''), code: e.status ?? 1 } }
-}
-const lastJson = (out) => { try { return JSON.parse(out.trim().split('\n').at(-1)) } catch { return null } }
-
-let failures = 0
-const check = (ok, run, name, detail) => { if (!ok) failures++
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${run.padEnd(18)} ${name.padEnd(14)} ${detail}`) }
-
-for (const name of readdirSync('corpus')) {
-  const dir = join('corpus', name)
-  const exp = JSON.parse(readFileSync(join(dir, 'EXPECTED.json'), 'utf8'))
-
-  // witness: replay_gates prints one verdict line per real ledger dir; extract this run's verdict
-  const w = run('replay_gates.mjs', [join(dir, 'ledger')])
-  const verdict = (w.out.match(/verdict[:=]\s*(\w+)/i) || w.out.match(/→\s*(\w+)/) || [])[1] || `exit=${w.code}`
-  const wOk = verdict === exp.witness.expected
-  check(wOk, name, 'witness', `expected=${exp.witness.expected} got=${verdict}` +
-    (!wOk && exp.witness.known_defect ? `  [KNOWN DEFECT: ${exp.witness.known_defect} — red by design until the retune lands]` : ''))
-
-  const e = lastJson(run('eval_driver.mjs', [join(dir, 'driver.js'), '--json']).out)
-  check((e?.verdict ?? 'crash') === exp.eval_driver.expected, name, 'eval_driver',
-    `expected=${exp.eval_driver.expected} got=${e?.verdict ?? 'crash'}`)
-
-  const brief = existsSync(join(dir, 'ledger', 'BRIEF.md')) ? join(dir, 'ledger', 'BRIEF.md') : join(dir, 'NOTES.md')
-  const l = lastJson(run('lint_design.mjs', [join(dir, 'driver.js'), brief, '--json']).out)
-  check(l !== null && l.hard_failures === exp.lint_design.expected_hard_failures &&
-        l.warnings >= exp.lint_design.expected_warnings_at_least, name, 'lint_design',
-    l ? `hard=${l.hard_failures} warns=${l.warnings}` : 'crash')
-}
-console.log(failures ? `\n${failures} mismatch(es) between tool verdicts and recorded truth.` : '\nEvery tool verdict matches recorded truth.')
-process.exit(failures ? 1 : 0)
-```
-
-**Adjust the `verdict` extraction to `replay_gates.mjs`'s real output format** — read its per-ledger print statement in the harness repo and match it exactly; the two regexes above are placeholders for whichever one is real (delete the other).
-
-- [ ] **Step 4: Write CI**
-
-`.github/workflows/bench.yml`: on `push` and a weekly `schedule` (catches harness drift):
-
-```yaml
-name: bench
-on: { push: {}, schedule: [{ cron: '0 6 * * 1' }] }
-jobs:
-  replay:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with: { repository: radiator-engineering/autonomous-loop, path: harness }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: AUTONOMOUS_LOOP=harness node run.mjs
-```
-
-- [ ] **Step 5: Run locally, then create the private repo and push**
-
-```bash
-cd ~/Development/autonomous-loop-bench && node run.mjs
-```
-
-Expected output: `eval_driver` and `lint_design` rows PASS (they match their recorded expectations); the two `witness` rows **FAIL with the `[KNOWN DEFECT: jam-rule]` tag** — that is the born-red state the spec demands. Confirm the failures are *only* those two rows, then:
-
-```bash
-git add -A && git commit -m "Seed the bench with the two runs that broke the jam rule, truth verdicts attached"
-gh repo create radiator-engineering/autonomous-loop-bench --private --source . --push
-```
-
-README.md must state, above the fold: the repo is **private because the corpus carries internal paths, hostnames, and project material**; what a red row means (tool-vs-truth mismatch — either a regression or a named known defect); and how to add a run (copy driver + full ledger, write `EXPECTED.json` truth by hand from what actually happened, never from tool output).
-
----
+What this repo owes it is an interface, and that interface is fixed by Tasks 2 and 4:
+`scripts/replay_gates.mjs <ledger-dir>` (per-run verdict lines on stdout),
+`scripts/eval_driver.mjs <driver> --json`, and `scripts/lint_design.mjs <driver> <brief> --json`.
+Any out-of-repo replayer consumes those three and diffs their verdicts against truth
+written by hand. Keep those contracts stable; that is the whole public obligation.
 
 ## Self-Review (performed while writing)
 
