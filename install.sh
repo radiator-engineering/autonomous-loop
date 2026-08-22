@@ -115,6 +115,10 @@ run_gate autonomous-loop selfcheck_loops.mjs
 run_gate autonomous-loop selfcheck_preflight.mjs
 run_gate autonomous-loop selfcheck_docs.mjs
 run_gate autonomous-loop selfcheck_board.mjs
+# The one gate here that executes the tool the kernel's instructions assume. Everything above asserts
+# over prompt STRINGS; attempt isolation shipped a branch name built from a raw item id, passed all of
+# them, and could not have started a saturator or sentinel run at all.
+run_gate autonomous-loop selfcheck_refnames.mjs
 # Not selfcheck_* by name, so the completeness scan below does not cover them: these two lines are
 # load-bearing, remove one and its gate silently stops running.
 run_gate autonomous-loop eval_driver.mjs

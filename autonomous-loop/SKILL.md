@@ -508,7 +508,12 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
    directories of any finished runs you have, because a gate that only ever meets synthetic fixtures
    is a gate whose real corpus nobody has looked at. That is how the three-state split was found.
    If you edited this skill's own prose, add `node scripts/selfcheck_docs.mjs`; if you touched
-   `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`. Before spending a
+   `assets/workbench.html` or the server, add `node scripts/selfcheck_board.mjs`. If you touched
+   anything that builds a git ref, path, or command out of an item id, add
+   `node scripts/selfcheck_refnames.mjs` — it is the only gate that runs the tool the kernel's
+   instructions assume, against every archetype's real id shape. Everything else here asserts over
+   prompt *strings*, which is how a branch name built from a raw locator (`attempt/src/a.rs:12`, not
+   a legal ref) passed the whole suite and could not have started a saturator or sentinel run at all. Before spending a
    real budget, `node scripts/eval_driver.mjs <driver.js>` runs the filled driver against scripted
    adversity for zero tokens, and `node scripts/lint_design.mjs <driver.js> <BRIEF.md>` reads the
    design for predictable failures the gates below cannot see.

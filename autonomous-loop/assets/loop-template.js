@@ -102,10 +102,13 @@ const VERIFIED_COMMITS = true             // "this run's TARGET is a git working
                                           // and a failed or conflicted attempt never touches the tree
                                           // everyone else reads. Set false only when TARGET is not a
                                           // git working tree (a design canvas, a live system, a non-VCS
-                                          // artifact) — every instruction this knob gates is defensive
-                                          // either way (it skips itself if the tree is not a git repo)
-                                          // but the knob keeps a non-git run from paying for worktrees
-                                          // and merges that can only ever no-op. Read directly by
+                                          // artifact). SET IT CORRECTLY — it is not self-disabling:
+                                          // the worker and verifier directives gate on this constant
+                                          // alone, so a `true` on a non-git TARGET hands every worker
+                                          // a `git worktree add` that cannot run. Only the Merge
+                                          // phase probes the tree itself (`git rev-parse
+                                          // --is-inside-work-tree`), and it never runs when nothing
+                                          // verified pass. Read directly by
                                           // worktreeDirective, worktreeVerifyDirective, the Merge phase,
                                           // and retryDirective — never branched on by MODE.
 const BRIEF = LEDGER_DIR + '/BRIEF.md'    // the intake, written BEFORE the run and gated by the launch gate
@@ -512,8 +515,27 @@ const MODES = {
         `another region, duplicated logic, an interface renamed on one side, imports or types that no ` +
         `longer line up. Do NOT fix a criterion, and do not touch anything that is not a cross-region ` +
         `break: a separate verifier already re-measured every criterion BEFORE it merged, and work you ` +
-        `do inside a region here is work nothing independently checks THIS round. Return a one-line ` +
-        `summary of what you reconciled, or "none".`,
+        `do inside a region here is work nothing independently checks THIS round. ` +
+        (VERIFIED_COMMITS
+          ? `You are editing the SHARED tree directly (not a worktree — the attempts already merged). ` +
+            `Nothing else in this run commits the shared tree, so COMMIT what you change here or it ` +
+            `is lost — staging ONLY the files you yourself edited, BY NAME: ` +
+            `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
+            `NEVER \`git add -A\` and never \`git add .\`: this run's own bookkeeping sits under ` +
+            `${LEDGER_DIR}, each attempt worktree under it is an embedded git repository that a blanket ` +
+            `add commits as a gitlink pointing at a branch that may not outlive the run (a dangling ` +
+            `submodule reference that breaks clones of the artifact), and the operator may have ` +
+            `unrelated work-in-progress in this tree that is none of your business. ` +
+            `If you changed nothing, commit nothing. Do not leave an edit of YOUR OWN uncommitted: ` +
+            `it does not just vanish from the record, it blocks the NEXT round's merge of any ` +
+            `attempt touching the same file. ` +
+            `Finish with none of your own edits left unstaged or uncommitted, and everything you did ` +
+            `NOT touch exactly as you found it. Do not aim for an empty \`git status\` — it is not ` +
+            `reachable here and not your goal: ${LEDGER_DIR} and the operator's work-in-progress both ` +
+            `show up in it, and they are supposed to. NEVER stash, checkout, reset, or clean to tidy ` +
+            `the tree; that destroys work that is not yours. `
+          : ``) +
+        `Return a one-line summary of what you reconciled, or "none".`,
         { ...TIER.escalate, phase: 'Coherence', label: 'coherence' })
     },
     key: (item) => item.id,
@@ -1063,17 +1085,34 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   const mergeResult = (VERIFIED_COMMITS && toMerge.length)
     ? await agent(
         `This round's verifiers passed ${toMerge.length} attempt(s): ${JSON.stringify(toMerge.map(m => m.id))}. ` +
+        `Each id's branch and worktree path (ids are not legal git refs, so use these EXACTLY as ` +
+        `given — never build a branch name out of the id yourself): ` +
+        `${JSON.stringify(toMerge.map(m => ({ id: m.id, ...attemptWorktree(m.id) })))}. ` +
         `First check whether the shared tree is inside a git repository (\`git rev-parse ` +
         `--is-inside-work-tree\`); if it is not, report every id above under "merged" (there is ` +
         `nothing to merge against) and stop. Otherwise, for EACH id above, IN ORDER, from the shared ` +
-        `tree: \`git merge --no-ff attempt/<id> -m "<id>: merge verified attempt"\`. If it merges ` +
-        `cleanly, remove that attempt's worktree (\`git worktree remove --force ` +
-        `${LEDGER_DIR}/attempts/<id>\`) and report the id under "merged". If it conflicts, run ` +
+        `tree: \`git merge --no-ff <that id's branch> -m "<id>: merge verified attempt (run ${RUN_ID})"\`. ` +
+        `If the ` +
+        `branch does not exist, or the merge reports "Already up to date", that attempt was a ` +
+        `legitimate no-op — it changed nothing, there is nothing to land and nothing to retry — so ` +
+        `report that id under "merged" and move on. If it merges ` +
+        `cleanly, remove that attempt's worktree (\`git worktree remove --force <that id's path>\`) ` +
+        `and report the id under "merged". If it conflicts, run ` +
         `\`git merge --abort\`, leave the attempt's worktree in place (its branch still holds the ` +
         `work — a retry rebuilds it fresh; this one is just not landing THIS round), and report the ` +
         `id under "conflicts" with the conflicted file list (\`git diff --name-only --diff-filter=U\` ` +
-        `BEFORE the abort) as its evidence. Never leave the repo mid-merge: always resolve to a clean ` +
-        `\`git status\` — either a completed merge commit or an aborted one — before you finish.`,
+        `BEFORE the abort) as its evidence. ` +
+        `A merge can also be REFUSED before it starts — "Your local changes would be overwritten by ` +
+        `merge", exit 2 — when the shared tree has uncommitted edits to a file the attempt touches. ` +
+        `That is not a conflict and the recovery above does not apply: there is no merge in progress, ` +
+        `so \`git diff --diff-filter=U\` is empty and \`git merge --abort\` fails with "no merge to ` +
+        `abort". Do NOT stash, checkout, reset, or clean to force it through — those uncommitted edits ` +
+        `are someone else's work. Report that id under "conflicts", say in its evidence that the merge ` +
+        `was refused by a dirty tree, and name the files \`git merge\` listed. ` +
+        `Never leave the repo mid-merge: every attempt must end as either a completed merge commit or ` +
+        `an aborted one, with no \`MERGE_HEAD\` left behind, before you finish. (Do not aim for an ` +
+        `empty \`git status\` — ${LEDGER_DIR} and any operator work-in-progress live in it and are ` +
+        `supposed to.)`,
         { ...TIER.mechanical, phase: 'Merge', label: 'merge', schema: MERGE_SCHEMA })
     : { merged: toMerge.map(m => m.id), conflicts: [] }
   // FAIL-CLOSED, same posture as `usable(v)`: a crashed or malformed Merge agent (missing/non-array
@@ -1122,12 +1161,24 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
     state.unverified.delete(item.id)
     if (v.pass && VERIFIED_COMMITS && !merged.has(item.id)) {
       // VERIFIED, but did not land (issue #8 subtask 3): a real merge conflict, or a Merge agent that
-      // crashed/answered unreadably. Treated exactly like a refuted verdict, not like a crash — the
-      // attempt's work was real, it just does not apply cleanly to a mainline that moved. It retries
-      // into a FRESH worktree off the (by then updated) mainline — worktreeDirective's unconditional
-      // reset-and-recreate already does that on every dispatch, so no separate instruction is needed.
+      // crashed/answered unreadably. It retries into a FRESH worktree off the (by then updated)
+      // mainline — worktreeDirective's unconditional reset-and-recreate already does that on every
+      // dispatch, so no separate instruction is needed.
+      //
+      // This is an OPEN MANDATE, not a closed one, and it is filed exactly where the crashed-verifier
+      // branch above files its own: `unverified`, never `seen`. Treating it as a refutation instead
+      // (`state.seen.add(key)`) was fail-OPEN in the archetypes whose `retry` is a deliberate no-op
+      // because re-offering is the frontier's job — saturator and explorer both filter the frontier on
+      // that same `seen` set, so a conflict DELETED an independently verified atom from the run and
+      // the terminal predicate, dry and blocker-free, still reported a positive status over a count
+      // that was quietly short. With a Merge agent that crashed every round it was worse: nothing ever
+      // landed, every atom went to `seen`, the frontier dried, and the run reported `saturated` with
+      // converged=true and confirmed=0 — one dead agent zeroing the count while the board said every
+      // instance had been found. `unverified` is the mechanism that already means what this is:
+      // work handed out whose result the artifact does not carry, holding `gap` true so no positive
+      // terminal status can fire while it is open, and letting patience end a run that can never land.
+      state.unverified.set(item.id, item)
       bumpFail(item.id)
-      state.seen.add(key)
       mode.retry(state, item)
       continue
     }
@@ -1396,7 +1447,18 @@ const fin = await agent(
         `stands" and name the directory, so the next agent can promote one. `
       : `No capture was produced this run; say so in one line under "Where it stands". `) +
   `Reconcile ${LEDGER_DIR}/footprint.jsonl (skip this if the file is absent, and say so in one "Traps" ` +
-    `line) against the working tree's changed files (\`git status --porcelain\`): under "Traps", add ` +
+    `line) against the files this run actually changed: the shared tree's uncommitted changes ` +
+    `(\`git status --porcelain\`) PLUS the files carried by this run's landed attempts ` +
+    (VERIFIED_COMMITS
+      ? `(\`git log --grep="merge verified attempt (run ${RUN_ID})" --diff-merges=first-parent ` +
+        `--name-only --pretty=format: | sort -u\` — under attempt isolation every worker edit is ` +
+        `committed inside its own worktree and reaches the shared tree as one of these merge ` +
+        `commits, so porcelain alone is clean by construction and would show you nothing. Both ` +
+        `flags are load-bearing: the run id scopes this to THIS run rather than every run that ` +
+        `ever merged into this repo, and without an explicit diff mode \`git log --name-only\` ` +
+        `prints NOTHING AT ALL for a merge commit). `
+      : ``) +
+    `Under "Traps", add ` +
     `one line per changed file no claim covers, and one line per file claimed by two different items. ` +
     `Cite file paths only; do not paste diffs. ` +
   `Carry "Traps" forward unchanged plus anything the ending taught. Keep the whole file under ~150 ` +
@@ -1664,13 +1726,47 @@ function footprintDirective(item) {
     `"event":"close","status":"<one of: done, noop, blocked>","note":"<one line: where this attempt ended>"}. ` +
     `Append only; never rewrite or truncate the file — other agents are appending to it at the same time.`
 }
+function refSlug(id) {
+  // The kernel does not choose item ids and must never assume they are legal git refs. A saturator's
+  // id IS its locator (`src/a.rs:12`), a sentinel's is `${round}:${id}`, an exhauster's comes from an
+  // enumerate agent. Interpolated raw, `git worktree add … -B attempt/src/a.rs:12` exits 128 with
+  // "not a valid branch name" — so on a git target the attempt could never start at all, for EVERY
+  // sentinel item and the typical saturator one.
+  //
+  // Slug to the charset git always accepts, then append a hash of the RAW id: two ids that slug
+  // identically (`a/b` and `a:b`) must not collide onto one branch and one worktree, which would have
+  // two items overwriting each other's attempt. Pure function of the id and nothing else — no round,
+  // no attempt counter — so every directive built from it stays byte-identical across attempts.
+  const raw = String(id)
+  const slug = raw.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.\.+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'item'
+  // 64 bits, as two independent 32-bit lanes: no imports, no crypto, no clock — stable across runs
+  // and across machines, which byte-identical prompt replay depends on. Width matters because a
+  // collision is not a cosmetic clash: worktreeDirective REMOVES an existing path and branch before
+  // recreating them, so two ids sharing a slug would have the second item delete the first's attempt
+  // and the Merge phase then attribute one item's work to the other. At 32 bits that is a birthday
+  // problem a long-running saturator could actually reach; at 64 it is not reachable.
+  let h1 = 0x811c9dc5
+  let h2 = 0x01000193
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+    h2 = Math.imul(h2 ^ (c + 0x9e3779b9), 0x85ebca6b) >>> 0
+  }
+  return `${slug}-${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`
+}
 function attemptWorktree(id) {
   // Deterministic, pure function of LEDGER_DIR (Config) and the item id — every phase that needs to
   // find an attempt's worktree (worker, verifier, Merge) can derive it without a new record, the same
   // way footprintDirective's file lives at a path derived from LEDGER_DIR alone. Lives under
   // LEDGER_DIR, not inside TARGET's own tree, alongside footprint.jsonl/claims.jsonl/activity.jsonl —
   // this run's own bookkeeping directory, not the artifact being worked on.
-  return { path: `${LEDGER_DIR}/attempts/${id}`, branch: `attempt/${id}` }
+  //
+  // Both halves go through refSlug: the branch because git demands it, the path because an id with a
+  // slash (`src/a.rs:12`) would otherwise nest the worktree in directories named after the artifact's
+  // own layout, and `git worktree remove` would then be pointed at a path no cleanup step can predict.
+  const safe = refSlug(id)
+  return { path: `${LEDGER_DIR}/attempts/${safe}`, branch: `attempt/${safe}` }
 }
 function worktreeDirective(item) {
   // Issue #8 subtask 3 (spec: attempt-isolation-design). VERIFIED_COMMITS-gated, same as every other
@@ -1698,10 +1794,15 @@ function worktreeVerifyDirective(item) {
   // for a verifier to be pointed at.
   if (!VERIFIED_COMMITS) return ''
   const { path, branch } = attemptWorktree(item.id)
-  return `\n\nWORKTREE: this attempt happened in an isolated worktree, not the shared tree — verify ` +
-    `INSIDE ${path} (cd there before running any check), never against the shared tree, which has not ` +
-    `been updated with this attempt yet. If ${path} does not exist, or ${branch} has no commits, that ` +
-    `is itself a FAIL — the worker never produced a real attempt — say so as your evidence.`
+  return `\n\nWORKTREE: this attempt happened in an isolated worktree, not the shared tree — if ` +
+    `${path} exists, verify INSIDE it (cd there before running any check), never against the shared ` +
+    `tree, which has not been updated with this attempt yet. If ${path} does not exist, or ${branch} ` +
+    `holds no commits of its own, the attempt changed nothing: check this item's done-criterion ` +
+    `against the shared tree instead, and name which of the two you checked in your evidence. An ` +
+    `empty attempt is a FACT to report, never a verdict on its own — some items are legitimately ` +
+    `no-ops (a criterion already passing, evidence that only needed gathering, an experiment that ` +
+    `only needed running), so do not fail one merely for being empty and do not pass one merely ` +
+    `because it is. The done-criterion decides.`
 }
 function activityDirective(phase, label) {
   // Mid-round visibility, paid for by agents that were going to run anyway. The driver has no
