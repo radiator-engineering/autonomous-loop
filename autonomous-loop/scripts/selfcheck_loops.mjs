@@ -1348,12 +1348,17 @@ const SCENARIOS = {
     coherenceCommitsItsEdits:
                    { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
-                       // Scoped BY NAME, never blanket. Measured in a scratch repo with LEDGER_DIR
-                       // inside the target: a bare `git add -A` stages the run's own ledger, stages
-                       // each attempt worktree as an embedded-repo gitlink (mode 160000) pointing at
-                       // a branch this run later deletes — a dangling submodule ref that breaks
-                       // clones of the artifact — and sweeps up the operator's unrelated
-                       // work-in-progress. Subtask 2 already had this rule ("never a bare
+                       // Scoped BY NAME, never blanket. A bare `git add -A` sweeps up the operator's
+                       // unrelated work-in-progress in every configuration, which decides the rule by
+                       // itself. Measured in a scratch repo with LEDGER_DIR inside the target and an
+                       // attempt worktree under it: with NO `.gitignore` in the run dir it also stages
+                       // the run's own ledger and stages that worktree as an embedded-repo gitlink
+                       // (mode 160000) pointing at a branch this run later deletes — a dangling
+                       // submodule ref that breaks clones of the artifact. With the `.gitignore`
+                       // containing `*` that workbench_server.py writes at startup, that second half
+                       // does not happen: `git add -A` stages nothing from the ledger dir at all. So
+                       // the gitlink hazard is the workbench-less run dir, and the prompt says so.
+                       // Subtask 2 already had this rule ("never a bare
                        // `git add -A`"); the relocated Coherence pass reintroduced the very thing.
                        // The prompt names the blanket forms in order to FORBID them, so a flat
                        // `!includes` would trip on the warning itself. Assert the shape instead: the
