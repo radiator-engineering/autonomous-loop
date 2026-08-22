@@ -1021,14 +1021,6 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
   state.round++
   state.roundGap = false          // producer blindness is per-round; `unverified` is NOT reset here
   state.roundAccepted = []
-  state.roundPassed = []          // every item verified pass AND landed (merged onto the shared tree)
-                                  // this round — evidence text for claims.jsonl, not a git operation
-                                  // of its own any more (issue #8 subtask 3 moved landing to Merge).
-                                  // Distinct from roundAccepted: that one is filtered by
-                                  // countsAsProgress/everConfirmed (the archetype's counted metric),
-                                  // this one is the raw verify-AND-merge predicate — a re-verified item
-                                  // that no longer counts as NEW progress still did real, passing work
-                                  // on the artifact and still belongs at HEAD.
   log(`Round ${state.round} — confirmed ${state.confirmed.length}, open ${state.open.size}, dry ${state.dry}`)
 
   // 1. FRONTIER: archetype-specific source of the next batch. Returns [{id, ...work}] or [].
@@ -1183,10 +1175,6 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
       continue
     }
     if (v.pass) {
-      // Every pass, whether or not it counts toward the archetype's tally — see the field comment
-      // on roundPassed above. Evidence text is best-effort for the commit message the ledger step
-      // writes; a verdict that omits it still names the item by id.
-      state.roundPassed.push({ id: item.id, evidence: (v.evidence || v.claim || '').slice(0, 200) })
       state.fails.delete(item.id)    // consecutive, not cumulative: one pass resets the stuck count
       clearBlocked(state, item)      // the independent verifier's pass is the ONLY clear path for a blocker
       // saturator/explorer only count an atom if NOVEL; converger counts each criterion once. The
@@ -1862,13 +1850,15 @@ async function writeLedger(state) {
     last_reported: state.reported,
   }
   const newClaims = (state.roundAccepted || []).map(a => ({ id: a.id, evidence: a.evidence || a.claim || '' }))
-  // `state.roundPassed` (this round's verified-AND-landed passes) no longer drives a commit here.
-  // Issue #8 subtask 3 (spec: attempt-isolation-design) REPLACES commit-per-verified-pass with the
-  // Merge phase, which now runs earlier in the round, right after Verify: a worker commits its own
-  // work inside its isolated worktree as it goes, and Merge already lands those commits on the shared
-  // tree the moment an item verifies pass. By the time the Ledger step runs, a landed item's commits
-  // are already at HEAD — nothing left for this agent to stage or commit. `state.roundPassed` is kept
-  // only as evidence text for `claims.jsonl` (via `newClaims`, above); it drives no git operation here.
+  // No commit-per-verified-pass happens here any more. Issue #8 subtask 3 (spec: attempt-isolation-design)
+  // REPLACES that with the Merge phase, which now runs earlier in the round, right after Verify: a worker
+  // commits its own work inside its isolated worktree as it goes, and Merge already lands those commits
+  // on the shared tree the moment an item verifies pass. By the time the Ledger step runs, a landed
+  // item's commits are already at HEAD — nothing left for this agent to stage or commit. `newClaims`
+  // (above) is scoped to `state.roundAccepted` — atoms newly confirmed this round — not every verified
+  // pass; a re-verified item that no longer counts as NEW progress still landed, but is not re-logged
+  // to claims.jsonl (observability.md: claims.jsonl "gets one `{id, evidence}` line per atom newly
+  // confirmed that round").
   // The blocked set, BOUNDED — the handoff's "Open blockers" section needs ids and what is stuck, and
   // the driver is the only place that knows them. Passed as a slice for the same reason the explorer
   // passes a recent tail rather than the whole grounded log (kernel #6): the driver's context stays
