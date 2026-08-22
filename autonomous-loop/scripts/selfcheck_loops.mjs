@@ -1334,7 +1334,20 @@ const SCENARIOS = {
     coherenceCommitsItsEdits:
                    { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
-                       p.includes('git add') && p.includes('git commit')) },
+                       // Scoped BY NAME, never blanket. Measured in a scratch repo with LEDGER_DIR
+                       // inside the target: a bare `git add -A` stages the run's own ledger, stages
+                       // each attempt worktree as an embedded-repo gitlink (mode 160000) pointing at
+                       // a branch this run later deletes — a dangling submodule ref that breaks
+                       // clones of the artifact — and sweeps up the operator's unrelated
+                       // work-in-progress. Subtask 2 already had this rule ("never a bare
+                       // `git add -A`"); the relocated Coherence pass reintroduced the very thing.
+                       // The prompt names the blanket forms in order to FORBID them, so a flat
+                       // `!includes` would trip on the warning itself. Assert the shape instead: the
+                       // scoped form is the instruction, and every mention of a blanket form is
+                       // immediately prefaced by "never".
+                       p.includes('git add -- ') && p.includes('git commit') &&
+                       [...p.matchAll(/git add (?:-A|\.)/g)].every(m =>
+                         /never\s*[`'"]?$/i.test(p.slice(Math.max(0, m.index - 12), m.index)))) },
     // FINALIZE'S FOOTPRINT RECONCILIATION MUST LOOK WHERE THE WORK ACTUALLY IS. Subtask 1 reconciled
     // claims against `git status --porcelain` of the shared tree; subtask 3 then guaranteed that tree
     // is CLEAN by construction (every worker edit is committed inside a worktree and lands as a merge

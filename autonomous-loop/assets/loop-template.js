@@ -519,7 +519,13 @@ const MODES = {
         (VERIFIED_COMMITS
           ? `You are editing the SHARED tree directly (not a worktree — the attempts already merged). ` +
             `Nothing else in this run commits the shared tree, so COMMIT what you change here or it ` +
-            `is lost: \`git add -A && git commit -m "coherence: reconcile round"\` when you are done. ` +
+            `is lost — staging ONLY the files you yourself edited, BY NAME: ` +
+            `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
+            `NEVER \`git add -A\` and never \`git add .\`: this run's own bookkeeping sits under ` +
+            `${LEDGER_DIR}, each attempt worktree under it is an embedded git repository that a blanket ` +
+            `add commits as a gitlink pointing at a branch this run later deletes (a dangling submodule ` +
+            `reference that breaks clones of the artifact), and the operator may have unrelated ` +
+            `work-in-progress in this tree that is none of your business. ` +
             `If you changed nothing, commit nothing and leave \`git status\` clean — an uncommitted ` +
             `edit left behind does not just vanish from the record, it blocks the NEXT round's merge ` +
             `of any attempt touching the same file. Either way, finish on a clean \`git status\`. `
