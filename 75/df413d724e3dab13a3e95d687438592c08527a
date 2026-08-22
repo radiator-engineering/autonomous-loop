@@ -1,0 +1,24 @@
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_4769a05c7f8a7b 1435-1441,1443-1448
+  s_ea64c4b449125a::t_c7b2a81b14e55c 1442
+  s_ea64c4b449125a::t_5effec48390224 1450-1456,1458
+  s_ea64c4b449125a::t_f1146908564c5a 1368-1386
+  s_ea64c4b449125a::t_372a6bccde2af5 1387,1405-1412,1414-1416
+  s_ea64c4b449125a::t_f9554967395ef2 1388-1394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "75df413d724e3dab13a3e95d687438592c08527a",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
