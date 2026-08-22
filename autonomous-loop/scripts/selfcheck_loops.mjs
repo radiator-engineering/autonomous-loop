@@ -630,6 +630,48 @@ const SCENARIOS = {
                      verify: id => (id === 'c1' ? null : pass(id)),
                      expect: blocks(r => r.converged === false && r.status !== 'saturated' &&
                        r.confirmed > 0 && last(r).gap === true) },
+    // A CONFLICT COSTS A ROUND, NEVER AN ATOM. The "verified but did not land" branch added the item
+    // to `state.seen` — and for this archetype `retry` is a deliberate no-op (re-offering is the
+    // frontier's job) while the frontier filters on exactly that `seen` set. So a real, independently
+    // verified instance was deleted from the run by a merge conflict, and the run still reported
+    // `saturated` with `converged: true` over a count that was quietly one short. c2 conflicts in
+    // round 1 and lands later; all three must confirm, and c2 must be worked more than once.
+    mergeConflictKeepsAtom:
+                   { ...NULLCAP, find: lens => ({ candidates: CANDS(lens) }), verify: id => pass(id),
+                     merge: (n, prompt) => {
+                       const m = prompt.match(/attempt\(s\): (\[[^\]]*\])/)
+                       const ids = m ? JSON.parse(m[1]) : []
+                       if (n === 1 && ids.includes('c2')) {
+                         return { merged: ids.filter(i => i !== 'c2'),
+                                  conflicts: [{ id: 'c2', evidence: 'conflict (test fixture)' }] }
+                       }
+                       return { merged: ids, conflicts: [] }
+                     },
+                     expect: unb((r, h) => r.confirmed === 3 && (h.counts['work:c2'] || 0) >= 2) },
+    // ITS FAIL-CLOSED HALF, and the shape that made the defect above catastrophic rather than merely
+    // lossy: a Merge agent that always crashes (the mock `mergeCrashFailsClosed` already uses) landed
+    // NOTHING all run — and because every verified atom was then filed under `seen`, the frontier went
+    // dry, the plateau fired, and the run reported `saturated`/`converged: true` with confirmed=0.
+    // One dead agent zeroed the count while the board said every instance had been found. A verified
+    // atom that cannot be landed is an OPEN mandate: no positive status may fire while one is open.
+    mergeCrashKeepsMandateOpen:
+                   { ...NULLCAP, find: lens => ({ candidates: CANDS(lens) }), verify: id => pass(id),
+                     merge: () => null,
+                     expect: unb(r => r.converged === false && r.status !== 'saturated' &&
+                       r.confirmed === 0 && last(r).gap === true) },
+    // REF-SAFETY, at the one place the kernel mints a git ref from an id it did not choose. A
+    // saturator's id IS its locator (`src/a.rs:12`); a sentinel's is `${round}:${id}`. Interpolated
+    // raw, `git worktree add … -B attempt/src/a.rs:12` exits 128 with "not a valid branch name", so on
+    // a git target the attempt could never even start — and the empty-attempt rule above then read
+    // that as a FAIL. selfcheck_refnames.mjs proves the sanitized form is legal git; this pins that
+    // the raw id never reaches the prompt in the first place.
+    worktreeBranchIsRefSafe:
+                   { find: (lens, n) => ({ candidates: n === 1 && lens === 'a' ? [{ where: 'src/a.rs:12', claim: 'x' }] : [] }),
+                     verify: id => pass(id),
+                     expect: (r, h) => {
+                       const work = h.prompts['work:src/a.rs:12'] || []
+                       return work.length > 0 && work.every(p =>
+                         p.includes('attempt/') && !p.includes('attempt/src/a.rs:12')) } },
     // deadFinders' sibling, and the reason the guard reads `Array.isArray(r?.candidates)` rather than
     // `Boolean`: a lens that answers with ONE candidate instead of a list of them. It is truthy, the
     // panel looks complete so no gap is raised, and flatMap hands the object straight through as a
@@ -1179,7 +1221,11 @@ const SCENARIOS = {
     // shape about a `git commit` instruction that no longer exists — commit-per-pass moved here and
     // became merge-per-pass). Same two-round shape `retryGetsTreeWarning` uses: round 1 has NOTHING
     // verified pass for r1, so round 1's merge prompt must not name it; round 2 verifies r1 pass, so
-    // ITS merge prompt must instruct `git merge --no-ff attempt/<id>` for r1 specifically.
+    // ITS merge prompt must instruct the merge for r1 specifically. STRENGTHENED with the ref-safety
+    // fix: the prompt no longer tells the agent to build `attempt/<id>` out of the id (ids are not
+    // legal refs — see worktreeBranchIsRefSafe), it hands over the id→branch→path mapping and forbids
+    // deriving one. So this now pins three things where it used to pin one: r1 is named, the merge
+    // command is instructed, and r1's REAL branch is supplied rather than left to be constructed.
     mergeRunsAfterPassingVerify:
                    { critique: () => CRIT(['fail', 'pass', 'pass']),
                      verify: (() => { let n = 0
@@ -1187,7 +1233,9 @@ const SCENARIOS = {
                      expect: (r, h) => {
                        const rounds = h.prompts['merge'] || []
                        const round2 = rounds[1] || ''
-                       return round2.includes('"r1"') && round2.includes('git merge --no-ff attempt/<id>')
+                       return round2.includes('"r1"') && round2.includes('git merge --no-ff') &&
+                         /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{8}"/.test(round2) &&
+                         round2.includes('never build a branch name out of the id yourself')
                      } },
     // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to the merge prompt
     // — its work stayed in its own worktree, verify said no, and nothing about it is asked to merge.
@@ -1262,6 +1310,39 @@ const SCENARIOS = {
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
                        p.includes('MERGED into the shared tree') &&
                        !p.includes('each edit was made without sight of the others')) },
+    // AN EMPTY ATTEMPT IS A FACT TO REPORT, NEVER A VERDICT TO MANDATE. worktreeVerifyDirective told
+    // EVERY verifier that an attempt branch with no commits "is itself a FAIL" — but the converger's
+    // own frontier dispatches each already-passing criterion with `Make NO edit; return "noop"`, and
+    // the saturator's and explorer's workers gather evidence and run experiments without editing at
+    // all. The directive therefore MANDATED a failing verdict for work the kernel itself asked to
+    // produce nothing, and the converger's `passing` set (written only by a pass) could never grow:
+    // any rubric that is mostly passing at round 1 stopped converging. The verifier must be told what
+    // to check when the attempt is empty, and left to judge the item on its own done-criterion.
+    emptyAttemptMandatesNoVerdict:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => {
+                       const vps = Object.keys(h.prompts).filter(k => k.startsWith('verify:'))
+                         .flatMap(k => h.prompts[k])
+                       return vps.length >= 2 && vps.every(p =>
+                         !p.includes('is itself a FAIL') && p.includes('done-criterion')) } },
+    // THE RECONCILER'S EDITS MUST LAND. Coherence moved AFTER Merge (subtask 3) and edits the SHARED
+    // tree — but nothing in the template commits the shared tree any more (the only write left is the
+    // Merge agent's own `git merge`). So the reconciliation was discarded from HEAD every round, and
+    // the orphaned modification then blocked the next round's merge of any attempt touching the same
+    // file ("Your local changes would be overwritten by merge"), at which point the Merge prompt's own
+    // prescribed recovery (`git merge --abort`) exits 128 because no merge is in progress.
+    coherenceCommitsItsEdits:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
+                       p.includes('git add') && p.includes('git commit')) },
+    // FINALIZE'S FOOTPRINT RECONCILIATION MUST LOOK WHERE THE WORK ACTUALLY IS. Subtask 1 reconciled
+    // claims against `git status --porcelain` of the shared tree; subtask 3 then guaranteed that tree
+    // is CLEAN by construction (every worker edit is committed inside a worktree and lands as a merge
+    // commit), so the "changed file no claim covers" detector could never see a worker's edit again.
+    finalizeReadsMergedAttempts:
+                   { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
+                       p.includes('footprint.jsonl') && p.includes('merge verified attempt')) },
     // THE RETRY WORKER'S INSTRUCTION SHRINKS TO A SHORT NOTE (issue #8 subtask 3, spec: attempt-
     // isolation-design). Subtask 2's unconditional-reset text ("git checkout", "git clean") assumed a
     // shared tree with an item's own leftovers worth resetting; attempt isolation removes that premise
