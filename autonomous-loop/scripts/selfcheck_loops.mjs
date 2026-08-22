@@ -165,6 +165,11 @@ function loadDriver(mode, maxRounds = '6', dryRounds = '2', mandates = "['correc
     // throw before any scenario ran — both need real values for the same reason, from opposite causes.
     '<<EFFORT>>': 'balanced',
     '<<EVIDENCE_EVERY>>': '1',
+    // A DISTINCTIVE value, not the fallthrough `x`: gitDirectivesAreRepoAnchored asserts that the
+    // emitted anchor names THIS root specifically. With a one-character value the assertion could
+    // not tell `git -C <root>` from `git -C .` — it would pin the anchor's syntax while a worthless
+    // anchor (`.`, `$PWD`) satisfied it and left the wrong-repo bug fully live.
+    '<<REPO_ROOT>>': '/fixture-repo-root',
   }
   for (const [k, v] of Object.entries(subs)) src = src.split(k).join(v)
   // Every remaining placeholder becomes a bare `x`, which is only valid because the rest live inside
@@ -672,7 +677,7 @@ const SCENARIOS = {
                        const work = h.prompts['work:src/a.rs:12'] || []
                        return work.length > 0 && work.every(p =>
                          p.includes('attempt/') && !p.includes('attempt/src/a.rs:12')) } },
-    // EVERY GIT COMMAND A PROMPT EMITS MUST BE ANCHORED TO REPO_ROOT. `git worktree add` and `git
+    // THE ATTEMPT-ISOLATION GIT COMMANDS MUST BE ANCHORED TO REPO_ROOT. `git worktree add` and `git
     // merge` resolve against the AGENT'S CURRENT DIRECTORY, so an unanchored one operates on whatever
     // repo the agent happens to be standing in — with exit 0, because a worktree created in the wrong
     // repo is not an error. Measured: a run created all three of its attempt worktrees in the
@@ -685,19 +690,41 @@ const SCENARIOS = {
     // git verbs we emit is by construction unanchored. There is no wording that satisfies the
     // negative while still being wrong — unlike a phrase-shape assertion, the flag is either
     // between `git` and the verb or it is not.
+    //
+    // SCOPE, STATED HONESTLY because the headline above is narrower than it first reads. This
+    // scenario sees TWO prompt channels (work:* and merge) and FIVE verb forms. The template also
+    // emits `git add -- <files>`, `git commit`, `git status --porcelain`, `git rev-parse HEAD` and
+    // `git log --name-only` from the Coherence and Ledger prompts, and this assertion neither reads
+    // those channels nor would flag those verbs. That is deliberate, not an oversight: the Coherence
+    // agent runs inside a tree it was already sent to, so anchoring ITS commands to REPO_ROOT would
+    // be wrong, not safer. What is pinned here is the attempt-isolation path — the one that created
+    // worktrees in the wrong repository. Widening the vocabulary without first deciding which agent
+    // stands where would assert a rule the template should not follow.
+    //
+    // The anchor must name REPO_ROOT ITSELF, not merely be syntactically present: `git -C .` and
+    // `git -C $PWD` are anchors that protect nothing, and an assertion that accepted them would
+    // pass the exact bug this exists to catch.
     gitDirectivesAreRepoAnchored:
                    { find: (lens, n) => ({ candidates: n === 1 && lens === 'a' ? [{ where: 'src/a.rs:12', claim: 'x' }] : [] }),
                      verify: id => pass(id),
                      expect: (r, h) => {
-                       const emitted = [...(h.prompts['work:src/a.rs:12'] || []), ...(h.prompts['merge'] || [])]
+                       const work = h.prompts['work:src/a.rs:12'] || []
+                       const merge = h.prompts['merge'] || []
                        // Only RUNNABLE commands. A bare `git merge` inside "never run `git merge`
                        // yourself" is a reference, not an instruction, and cannot be executed as
                        // written; flagging it would force prose to contort around the assertion.
                        // Every form below carries the argument that makes it a command.
                        const unanchored = /`git (worktree (add|remove)|merge --(no-ff|abort)|branch -D)/
-                       return emitted.length > 0 &&
-                         emitted.every(p => !unanchored.test(p)) &&
-                         emitted.some(p => p.includes('git -C ')) } },
+                       const anchored = /git -C \/fixture-repo-root /
+                       // BOTH channels are required non-empty and BOTH must carry the anchor. A
+                       // single combined array with a `.some` floor would let one channel lose every
+                       // git command while the other kept the clause true — and the `.every` would
+                       // then range vacuously over the stripped one. Same vacuous-truth shape this
+                       // file already got caught by once, in coherenceNeverDemandsACleanTree.
+                       return work.length > 0 && merge.length > 0 &&
+                         [...work, ...merge].every(p => !unanchored.test(p)) &&
+                         work.some(p => anchored.test(p)) &&
+                         merge.some(p => anchored.test(p)) } },
     // deadFinders' sibling, and the reason the guard reads `Array.isArray(r?.candidates)` rather than
     // `Boolean`: a lens that answers with ONE candidate instead of a list of them. It is truthy, the
     // panel looks complete so no gap is raised, and flatMap hands the object straight through as a
@@ -1232,9 +1259,11 @@ const SCENARIOS = {
                        const prompts = h.prompts['work:r1'] || []
                        return prompts.length >= 2 && prompts.every(p =>
                          p.includes('WORKTREE') && p.includes('/attempts/r1') &&
-                         // Anchored form required, same strengthening as mergeRunsAfterPassingVerify:
-                         // the old `includes('git worktree add')` passed on the unanchored command
-                         // that created attempts in the wrong repo.
+                         // Anchored form required. Same shape as mergeRunsAfterPassingVerify: formally
+                         // INCOMPARABLE to the old `includes('git worktree add')` rather than strictly
+                         // stronger, because the old form REQUIRED the unanchored string — which is why
+                         // it had to be touched at all. The old-only region is exactly the defective
+                         // prompt that created attempts in the wrong repo.
                          p.includes('attempt/r1') && /git -C \S+ worktree add/.test(p))
                      } },
     // THE VERIFIER IS POINTED AT THE ISOLATED ATTEMPT, NEVER THE SHARED TREE (same spec): the shared
@@ -1263,9 +1292,13 @@ const SCENARIOS = {
                        const rounds = h.prompts['merge'] || []
                        const round2 = rounds[1] || ''
                        // `git -C <root> merge --no-ff`, not a bare `git merge --no-ff`: the anchor is
-                       // now part of what this scenario pins (see gitDirectivesAreRepoAnchored). This
-                       // is a STRENGTHENING of the original `includes('git merge --no-ff')` — the
-                       // --no-ff flag is still asserted, with the repo anchor required alongside it.
+                       // now part of what this scenario pins (see gitDirectivesAreRepoAnchored).
+                       // PRECISELY: this is INCOMPARABLE to the original `includes('git merge --no-ff')`,
+                       // not strictly stronger — an anchored prompt passes the new form and FAILED the
+                       // old one, because the old form required the unanchored string as a literal
+                       // substring. Every input in that new-passes/old-failed region carries the
+                       // anchored command and lacks the unanchored one, so the direction that matters
+                       // is stronger; --no-ff is still required, and no clause was dropped.
                        return round2.includes('"r1"') && /git -C \S+ merge --no-ff/.test(round2) &&
                          /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{16}"/.test(round2) &&
                          round2.includes('never build a branch name out of the id yourself')
