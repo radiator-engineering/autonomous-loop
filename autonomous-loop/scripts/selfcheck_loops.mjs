@@ -1439,13 +1439,34 @@ const SCENARIOS = {
                        // including `worktree prune`), so that adding an emission later does not
                        // silently add an uncovered one. No backtick is required and whitespace is
                        // `\s+`: both were escapes.
-                       const GIT_CMD = /git(?:\s+-C\s+(\S+))?\s+(worktree\s+\w+|merge\s+--\S+|branch\s+-[a-zA-Z]\b|add\s+--|commit\s+-\w|checkout\b|reset\b|rev-parse\s+\S|diff\s+--\S+|clean\s+-\S+|push\s+\S|pull\s+\S|fetch\s+\S|rebase\s+\S|stash\b|cherry-pick\s+\S|revert\s+\S|restore\s+\S|switch\s+\S|apply\s+\S|am\s+\S|tag\s+\S|remote\s+\S|submodule\s+\S|init\b|config\s+\S|update-ref\s+\S|symbolic-ref\s+\S|gc\s+\S|rm\s+\S)/g
-                       // The captured `-C` argument is compared to the root ITSELF. Absent (undefined)
-                       // and wrong (`.`, `$PWD`, LEDGER_DIR, any other repo) fail the same way, which
-                       // is the point: a syntactically present anchor that names the wrong directory
-                       // protects nothing, and the old predicate could not tell those two apart.
+                       //
+                       // OPT is everything git accepts BETWEEN `git` and the verb, and it exists
+                       // because the version without it did not match such a command AT ALL — and a
+                       // command the scanner cannot see produces no offender, so it passed. Measured
+                       // escapes: `git -C=/wrong worktree add`, `git --work-tree=/wrong add -- f`,
+                       // `git -C "/quoted wrong" worktree add`, and `git -C <root> -C /wrong …`,
+                       // where the SECOND -C is the one git actually ends up in. Every one is a
+                       // wrong-repo write at 0 FAILs. The lesson is the same one that killed the
+                       // blacklist: a scanner's blind spot is indistinguishable from a clean result.
+                       const OPT = String.raw`(?:\s+(?:--?[\w-]+=\S+|-[a-zA-Z]\s+(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+))`
+                       const VERBS = String.raw`(?:worktree\s+\w+|merge\s+--\S+|branch\s+-[a-zA-Z]\b|add\s+--|commit\s+-\w|checkout\b|reset\b|rev-parse\s+\S|diff\s+--\S+|clean\s+-\S+|push\s+\S|pull\s+\S|fetch\s+\S|rebase\s+\S|stash\b|cherry-pick\s+\S|revert\s+\S|restore\s+\S|switch\s+\S|apply\s+\S|am\s+\S|tag\s+\S|remote\s+\S|submodule\s+\S|init\b|config\s+\S|update-ref\s+\S|symbolic-ref\s+\S|gc\s+\S|rm\s+\S)`
+                       const GIT_CMD = new RegExp(String.raw`git(${OPT}*)\s+${VERBS}`, 'g')
+                       // Every option that can move git to another directory, in any spelling git
+                       // accepts. Exactly one must be present and it must be `-C <root>`: zero means
+                       // unanchored, two means the last one wins and the first is decoration, and
+                       // `--git-dir`/`--work-tree` relocate just as effectively as `-C` does.
+                       const DIR_OPT = /(?:^|\s)(-C|--git-dir|--work-tree)[=\s]+("[^"]*"|'[^']*'|\S+)/g
+                       // The directory option is compared to the root ITSELF. Absent and wrong (`.`,
+                       // `$PWD`, LEDGER_DIR, any other repo) fail the same way, which is the point: a
+                       // syntactically present anchor naming the wrong directory protects nothing,
+                       // and the blacklist could not tell those two apart. A trailing slash or a `..`
+                       // round trip is REJECTED even though it resolves to the same directory — that
+                       // is a false positive, it is deliberate, and it errs toward blocking a
+                       // legitimate spelling rather than admitting an illegitimate one.
                        const ROOT = '/fixture-repo-root'
-                       const offenders = p => [...p.matchAll(GIT_CMD)].filter(m => m[1] !== ROOT)
+                       const offenders = p => [...p.matchAll(GIT_CMD)].filter(m => {
+                         const dirs = [...(m[1] || '').matchAll(DIR_OPT)]
+                         return dirs.length !== 1 || dirs[0][1] !== '-C' || dirs[0][2] !== ROOT })
                        const anchored = /git -C \/fixture-repo-root /
                        // ALL THREE channels are required non-empty and all three must carry the
                        // anchor. `offenders` returning [] is trivially true on a prompt with no git
