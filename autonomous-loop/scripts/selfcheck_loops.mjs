@@ -1234,7 +1234,7 @@ const SCENARIOS = {
                        const rounds = h.prompts['merge'] || []
                        const round2 = rounds[1] || ''
                        return round2.includes('"r1"') && round2.includes('git merge --no-ff') &&
-                         /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{8}"/.test(round2) &&
+                         /"id":"r1","path":"[^"]+","branch":"attempt\/r1-[0-9a-f]{16}"/.test(round2) &&
                          round2.includes('never build a branch name out of the id yourself')
                      } },
     // THE OTHER HALF: an item that failed this round's verify contributes NOTHING to the merge prompt
@@ -1342,7 +1342,12 @@ const SCENARIOS = {
     finalizeReadsMergedAttempts:
                    { critique: () => CRIT(['fail', 'pass', 'pass']), verify: id => pass(id),
                      expect: (r, h) => (h.prompts['finalize'] || []).some(p =>
-                       p.includes('footprint.jsonl') && p.includes('merge verified attempt')) },
+                       p.includes('footprint.jsonl') && p.includes('merge verified attempt (run ') &&
+                       // Both flags are load-bearing and neither is cosmetic: without an explicit diff
+                       // mode `git log --name-only` prints NOTHING for a merge commit (verified against
+                       // git 2.51), so the detector would still be blind; without the run id the grep
+                       // sweeps in every earlier run that ever merged into the same repo.
+                       p.includes('--diff-merges=first-parent') && p.includes('--name-only')) },
     // THE RETRY WORKER'S INSTRUCTION SHRINKS TO A SHORT NOTE (issue #8 subtask 3, spec: attempt-
     // isolation-design). Subtask 2's unconditional-reset text ("git checkout", "git clean") assumed a
     // shared tree with an item's own leftovers worth resetting; attempt isolation removes that premise

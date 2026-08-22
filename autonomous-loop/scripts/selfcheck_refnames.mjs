@@ -65,6 +65,14 @@ const IDS = [
   ['adversarial', 'feature/.hidden'],                     // git rejects a path component starting '.'
   ['adversarial', '@{upstream}'],                         // git rejects '@{'
   ['adversarial', 'ünïcödé-ідентифікатор'],               // non-ASCII: legal in git, must survive
+  // COLLISION PAIRS: ids that slug to the SAME string and must still derive different attempts. A
+  // collision is not cosmetic — worktreeDirective REMOVES an existing path and branch before
+  // recreating them, so the second item would delete the first's attempt and Merge would then
+  // attribute one item's work to the other.
+  ['collision  ', 'a/b'],
+  ['collision  ', 'a:b'],
+  ['collision  ', 'a b'],
+  ['collision  ', 'src/a.rs:12:'],                        // vs the saturator locator above
 ]
 
 const git = (args, cwd = ROOT) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()

@@ -1080,7 +1080,8 @@ while (state.round < ROUND_LIMIT && !mode.stop(state) && withinBudget() && !stal
         `First check whether the shared tree is inside a git repository (\`git rev-parse ` +
         `--is-inside-work-tree\`); if it is not, report every id above under "merged" (there is ` +
         `nothing to merge against) and stop. Otherwise, for EACH id above, IN ORDER, from the shared ` +
-        `tree: \`git merge --no-ff <that id's branch> -m "<id>: merge verified attempt"\`. If the ` +
+        `tree: \`git merge --no-ff <that id's branch> -m "<id>: merge verified attempt (run ${RUN_ID})"\`. ` +
+        `If the ` +
         `branch does not exist, or the merge reports "Already up to date", that attempt was a ` +
         `legitimate no-op — it changed nothing, there is nothing to land and nothing to retry — so ` +
         `report that id under "merged" and move on. If it merges ` +
@@ -1428,11 +1429,13 @@ const fin = await agent(
     `line) against the files this run actually changed: the shared tree's uncommitted changes ` +
     `(\`git status --porcelain\`) PLUS the files carried by this run's landed attempts ` +
     (VERIFIED_COMMITS
-      ? `(\`git log --grep="merge verified attempt" --name-only --pretty=format: | sort -u\` — under ` +
-        `attempt isolation every worker edit is committed inside its own worktree and reaches the ` +
-        `shared tree as one of these merge commits, so porcelain alone is clean by construction and ` +
-        `would show you nothing; note in one "Traps" line that this grep cannot tell THIS run's ` +
-        `merges from an earlier run's in the same repo). `
+      ? `(\`git log --grep="merge verified attempt (run ${RUN_ID})" --diff-merges=first-parent ` +
+        `--name-only --pretty=format: | sort -u\` — under attempt isolation every worker edit is ` +
+        `committed inside its own worktree and reaches the shared tree as one of these merge ` +
+        `commits, so porcelain alone is clean by construction and would show you nothing. Both ` +
+        `flags are load-bearing: the run id scopes this to THIS run rather than every run that ` +
+        `ever merged into this repo, and without an explicit diff mode \`git log --name-only\` ` +
+        `prints NOTHING AT ALL for a merge commit). `
       : ``) +
     `Under "Traps", add ` +
     `one line per changed file no claim covers, and one line per file claimed by two different items. ` +
@@ -1716,9 +1719,20 @@ function refSlug(id) {
   const raw = String(id)
   const slug = raw.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.\.+/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'item'
-  let h = 0x811c9dc5                                   // FNV-1a, inline: no imports, no crypto, stable
-  for (let i = 0; i < raw.length; i++) { h ^= raw.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
-  return `${slug}-${h.toString(16).padStart(8, '0')}`
+  // 64 bits, as two independent 32-bit lanes: no imports, no crypto, no clock — stable across runs
+  // and across machines, which byte-identical prompt replay depends on. Width matters because a
+  // collision is not a cosmetic clash: worktreeDirective REMOVES an existing path and branch before
+  // recreating them, so two ids sharing a slug would have the second item delete the first's attempt
+  // and the Merge phase then attribute one item's work to the other. At 32 bits that is a birthday
+  // problem a long-running saturator could actually reach; at 64 it is not reachable.
+  let h1 = 0x811c9dc5
+  let h2 = 0x01000193
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+    h2 = Math.imul(h2 ^ (c + 0x9e3779b9), 0x85ebca6b) >>> 0
+  }
+  return `${slug}-${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`
 }
 function attemptWorktree(id) {
   // Deterministic, pure function of LEDGER_DIR (Config) and the item id — every phase that needs to
