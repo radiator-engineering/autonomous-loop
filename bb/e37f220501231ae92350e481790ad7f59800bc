@@ -1,0 +1,39 @@
+autonomous-loop/assets/loop-template.js
+  s_ea64c4b449125a::t_6cfc8710365896 500-504,506,508-516
+  s_ea64c4b449125a::t_cbe64e10bea42b 95-110
+  s_ea64c4b449125a::t_71535f0d63fe9c 1027-1029,1033,1039-1090,1102,1104,1123-1133
+  s_ea64c4b449125a::t_bf7d58a9bf6954 1667-1705
+  s_ea64c4b449125a::t_6e687a208b5697 1764-1770
+  s_ea64c4b449125a::t_e3403c8e6c67aa 1002-1007
+  s_ea64c4b449125a::t_e5f1b7fb3ffa3d 312-331
+  s_ea64c4b449125a::t_aa505e4f219989 1617-1619,1622-1631
+docs/superpowers/specs/2026-08-21-attempt-isolation-design.md
+  s_ea64c4b449125a::t_43fa46569a33bb 1-466
+autonomous-loop/references/observability.md
+  s_ea64c4b449125a::t_cd1e4006372ee6 289-292,294-297,299-301
+autonomous-loop/scripts/selfcheck_loops.mjs
+  s_ea64c4b449125a::t_d0f9c4a3e153cf 82-93
+  s_ea64c4b449125a::t_48fb05c760757c 288-294,296-299
+  s_ea64c4b449125a::t_cee4037ca0bfba 1154-1183,1188,1190,1192-1194,1199-1200,1202-1272,1281-1282
+  s_ea64c4b449125a::t_b3c870f8e48231 295
+  s_ea64c4b449125a::t_8e573d27f390a0 1120-1126
+autonomous-loop/scripts/lib/spoof_world.mjs
+  s_ea64c4b449125a::t_3a4ee11836faee 84-94
+  s_ea64c4b449125a::t_6b35ffbd964ad4 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "bbe37f220501231ae92350e481790ad7f59800bc",
+  "prompts": {},
+  "sessions": {
+    "s_ea64c4b449125a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9e0c3f6-5bf4-4cec-b4b5-a4aaae88c8c4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "JJ Martin <jjm@radiator.live>"
+    }
+  }
+}
