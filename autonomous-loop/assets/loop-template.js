@@ -1857,7 +1857,8 @@ async function writeLedger(state) {
   // item's commits are already at HEAD — nothing left for this agent to stage or commit. `newClaims`
   // (above) is scoped to `state.roundAccepted` — atoms newly confirmed this round — not every verified
   // pass; a re-verified item that no longer counts as NEW progress still landed, but is not re-logged
-  // to claims.jsonl (see observability.md: claims.jsonl is "one line per atom newly confirmed").
+  // to claims.jsonl (observability.md: claims.jsonl "gets one `{id, evidence}` line per atom newly
+  // confirmed that round").
   // The blocked set, BOUNDED — the handoff's "Open blockers" section needs ids and what is stuck, and
   // the driver is the only place that knows them. Passed as a slice for the same reason the explorer
   // passes a recent tail rather than the whole grounded log (kernel #6): the driver's context stays
