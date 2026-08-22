@@ -1376,9 +1376,19 @@ const SCENARIOS = {
     // agent's OWN edits and that the destructive escapes are named and forbidden.
     coherenceNeverDemandsACleanTree:
                    { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+    // ASSERT OVER A BOUNDED VOCABULARY, NOT A PHRASE SHAPE. The first cut of this predicate keyed on
+    // one syntactic frame (a verb from a closed set, then "a clean `git status`"). A reviewer put eight
+    // natural rewordings of the same demand through it and FIVE escaped — including "Make sure
+    // `git status` is clean when you are done" and "Finish with a completely clean `git status`", which
+    // slips through on an inserted adverb. A negative assertion can never be complete, but it can stop
+    // depending on word order: in a correct prompt `git status` appears ONLY in the disclaimer that
+    // an empty one is not the goal, and `clean` appears ONLY in the list of verbs never to reach for.
+    // Pin those two facts and all eight rewordings die. Same trick as coherenceCommitsItsEdits above.
                      expect: (r, h) => (h.prompts['coherence'] || []).some(p =>
                        p.includes('none of your own edits') &&
-                       !/(finish|end|resolve)[^.]{0,40}\ban?\s+clean\s+[`'"]?git status/i.test(p) &&
+                       [...p.matchAll(/git status/g)].every(m =>
+                         /empty\s*[`'"]?$/i.test(p.slice(Math.max(0, m.index - 10), m.index))) &&
+                       !/\bclean\b/i.test(p.replace('reset, or clean to tidy', '')) &&
                        /NEVER stash, checkout, reset, or clean/i.test(p)) },
     // FINALIZE'S FOOTPRINT RECONCILIATION MUST LOOK WHERE THE WORK ACTUALLY IS. Subtask 1 reconciled
     // claims against `git status --porcelain` of the shared tree; subtask 3 then guaranteed that tree
