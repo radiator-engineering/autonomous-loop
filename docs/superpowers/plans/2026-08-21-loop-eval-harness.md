@@ -4,9 +4,9 @@
 
 **Goal:** Deterministic, zero-token testing of *filled* loop drivers: a behavioral battery that runs any generated driver against a scripted world (`eval_driver.mjs`), a design linter that reads a driver + its BRIEF and names predictable deaths (`lint_design.mjs`), and a regression corpus of real recorded runs, with human-written truth verdicts, kept private outside this repo.
 
-**Architecture:** Both new public tools reuse the mocked-Workflow-harness mechanism already proven in `autonomous-loop/scripts/selfcheck_loops.mjs` — the driver source is wrapped in an `AsyncFunction` and run with spoofed `agent/parallel/pipeline/log/phase/budget`, where the spoofed `agent()` routes on the call's `label`. That routing logic is extracted into a shared module (`scripts/lib/spoof_world.mjs`) so `eval_driver` (battery) and `lint_design` (L2 needs measured prompt bytes from one spoofed run) both consume it. The private bench is a separate repo that clones this one in CI and diffs tool verdicts against `EXPECTED.json` truth files.
+**Architecture:** Both new public tools reuse the mocked-Workflow-harness mechanism already proven in `autonomous-loop/scripts/selfcheck_loops.mjs` — the driver source is wrapped in an `AsyncFunction` and run with spoofed `agent/parallel/pipeline/log/phase/budget`, where the spoofed `agent()` routes on the call's `label`. That routing logic is extracted into a shared module (`scripts/lib/spoof_world.mjs`) so `eval_driver` (battery) and `lint_design` (L2 needs measured prompt bytes from one spoofed run) both consume it. The private corpus lives outside this repo, clones it in CI, and diffs tool verdicts against truth files written by hand.
 
-**Tech Stack:** Node ≥ 20, ESM `.mjs`, zero npm dependencies (the skill ships no `package.json` — everything is `node:` builtins). Bash for `install.sh`. GitHub Actions for bench CI.
+**Tech Stack:** Node ≥ 20, ESM `.mjs`, zero npm dependencies (the skill ships no `package.json` — everything is `node:` builtins). Bash for `install.sh`. GitHub Actions for this repo's gate CI.
 
 **Spec:** `docs/superpowers/specs/2026-08-21-loop-eval-harness-design.md` — read it first; every task below implements a named section of it.
 
@@ -507,14 +507,21 @@ human-written truth verdicts — is deliberately **not** built in this repo and 
 planned here. The recorded runs carry internal paths, hostnames, and project material,
 so neither the corpus nor its location belongs in a public plan.
 
-What this repo owes it is an interface, and that interface is fixed by Tasks 2 and 4:
-`scripts/replay_gates.mjs <ledger-dir>` (per-run verdict lines on stdout),
-`scripts/eval_driver.mjs <driver> --json`, and `scripts/lint_design.mjs <driver> <brief> --json`.
-Any out-of-repo replayer consumes those three and diffs their verdicts against truth
-written by hand. Keep those contracts stable; that is the whole public obligation.
+What this repo owes it is three stable surfaces, and they are not all the same kind, nor
+all this plan's to build:
+
+| surface | shape | who builds it |
+|---|---|---|
+| `scripts/eval_driver.mjs <driver> --json` | JSON | Task 2 |
+| `scripts/lint_design.mjs <driver> <brief> --json` | JSON | Task 4 |
+| `scripts/replay_gates.mjs <ledger-dir>` | per-run verdict lines on stdout, **not** `--json` | **pre-existing** — no task here builds or modifies it |
+
+Any out-of-repo replayer consumes all three and diffs their verdicts against truth
+written by hand. This plan fixes the first two and must not break the third. Keeping
+all three stable is the whole public obligation.
 
 ## Self-Review (performed while writing)
 
-- **Spec coverage:** eval_driver battery + scenario table → Tasks 2–3 (all 8 spec scenarios present: happyPath, contextDeathWorker, contextDeathEveryone, lyingVerifier, budgetCliff, runawayUnbounded, deadAuditor, witnessRungs). Label-keyed spoofing + `unspoofable` fail-closed → Tasks 1–2. Self-test + mutants + red halves → Task 3. `run_gate` + repack → Tasks 3–4. lint L1–L5 with the spec's severities → Task 4. The spec's Piece 3 (the out-of-repo regression corpus — its layout, truth schema, replayer, and CI) is deliberately NOT covered by any task here; Task 6 records that it is tracked outside this repo and why. What this plan owes it is the three `--json` interfaces, covered by Tasks 2 and 4. Deferred items (jam retune, dirty-tree reset): correctly absent, guarded by the "never edit the template" global constraint.
+- **Spec coverage:** eval_driver battery + scenario table → Tasks 2–3 (all 8 spec scenarios present: happyPath, contextDeathWorker, contextDeathEveryone, lyingVerifier, budgetCliff, runawayUnbounded, deadAuditor, witnessRungs). Label-keyed spoofing + `unspoofable` fail-closed → Tasks 1–2. Self-test + mutants + red halves → Task 3. `run_gate` + repack → Tasks 3–4. lint L1–L5 with the spec's severities → Task 4. The spec's Piece 3 (the out-of-repo regression corpus — its layout, truth schema, replayer, and CI) is deliberately NOT covered by any task here; Task 6 records that it is tracked outside this repo and why. What this plan owes it is stability at three surfaces: the two `--json` contracts, built here by Tasks 2 and 4, and `replay_gates.mjs`'s stdout verdict-line format, which is pre-existing and which no task here builds or modifies — this plan must simply not break it. Deferred items (jam retune, dirty-tree reset): correctly absent, guarded by the "never edit the template" global constraint.
 - **Type consistency:** `spoofWorld` return fields consumed by Tasks 2/4 (`unknownLabels`, `promptBytes`, `disk`, `counts`, `models`) all defined in Task 1. `--json` contracts produced in Tasks 2/4 are the stable surface any out-of-repo replayer parses (`verdict`, `hard_failures`, `warnings`); they are fixed here and must not drift.
-- **Known soft spots, flagged not hidden:** two strings must be copied byte-exact from live files rather than from this plan (the mutant `from` lines in Task 3; the `replay_gates` verdict-line format, which an out-of-repo replayer parses) — both are marked at the point of use with an existence guard so a drifted string fails loudly.
+- **Known soft spots, flagged not hidden:** one string must be copied byte-exact from a live file rather than from this plan — the mutant `from` lines in Task 3 — and it is marked at the point of use with an existence guard (`src.includes`) so a drifted string fails loudly. The `replay_gates` verdict-line format is the second byte-exact dependency, but it has no point of use left in this plan and therefore no guard here: its only consumer is out of repo. Nothing in this plan instructs anyone to copy it; whatever parses it owns that risk.
