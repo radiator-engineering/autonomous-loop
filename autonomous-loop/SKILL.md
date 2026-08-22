@@ -500,8 +500,12 @@ and every case still passed. Deleting any one entry now flips exactly its own ca
    easy to miss because they are new: `<<EFFORT>>` (`thrifty` | `balanced` | `quality-first` — the
    driver refuses anything else at startup rather than defaulting, so a typo cannot silently price the
    run differently from what the operator was told), `<<EVIDENCE_EVERY>>` (rounds between captures;
-   `0` declares the loop evidence-free), and `<<SKILL_DIR>>` (this skill's directory — a workflow
-   script has no `__dirname`, so it cannot find its own scripts unless you tell it where they are).
+   `0` declares the loop evidence-free), `<<SKILL_DIR>>` (this skill's directory — a workflow
+   script has no `__dirname`, so it cannot find its own scripts unless you tell it where they are),
+   and `<<REPO_ROOT>>` (the one git repo this run may touch, as an ABSOLUTE path — every git command
+   the template emits is anchored to it with `git -C`, because `git worktree add` otherwise resolves
+   against whatever directory the agent is standing in and creates the attempt in the wrong repo
+   with no error). Fill it with `TARGET`'s repo root; it is ignored when `VERIFIED_COMMITS` is false.
 4. **Self-check the kernel and the gate** (`node scripts/selfcheck_loops.mjs`, and
    `node scripts/selfcheck_preflight.mjs` if you touched the gate or the template's region markers).
    If you touched the witness rung, add `node scripts/replay_gates.mjs` — and pass it the ledger

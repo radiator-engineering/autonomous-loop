@@ -677,54 +677,6 @@ const SCENARIOS = {
                        const work = h.prompts['work:src/a.rs:12'] || []
                        return work.length > 0 && work.every(p =>
                          p.includes('attempt/') && !p.includes('attempt/src/a.rs:12')) } },
-    // THE ATTEMPT-ISOLATION GIT COMMANDS MUST BE ANCHORED TO REPO_ROOT. `git worktree add` and `git
-    // merge` resolve against the AGENT'S CURRENT DIRECTORY, so an unanchored one operates on whatever
-    // repo the agent happens to be standing in — with exit 0, because a worktree created in the wrong
-    // repo is not an error. Measured: a run created all three of its attempt worktrees in the
-    // operator's own checkout rather than the configured clone, and nothing in this file caught it,
-    // because the prompt contained all the right WORDS. The directives said "(run from the shared
-    // tree)" and named the repo only in TARGET, which is prose the agent may or may not act on.
-    //
-    // Asserted over a BOUNDED VOCABULARY, which is what makes this cheap and paraphrase-proof: the
-    // anchored form is `git -C <root> <verb>`, so a backtick-git followed directly by any of the
-    // git verbs we emit is by construction unanchored. There is no wording that satisfies the
-    // negative while still being wrong — unlike a phrase-shape assertion, the flag is either
-    // between `git` and the verb or it is not.
-    //
-    // SCOPE, STATED HONESTLY because the headline above is narrower than it first reads. This
-    // scenario sees TWO prompt channels (work:* and merge) and FIVE verb forms. The template also
-    // emits `git add -- <files>`, `git commit`, `git status --porcelain`, `git rev-parse HEAD` and
-    // `git log --name-only` from the Coherence and Ledger prompts, and this assertion neither reads
-    // those channels nor would flag those verbs. That is deliberate, not an oversight: the Coherence
-    // agent runs inside a tree it was already sent to, so anchoring ITS commands to REPO_ROOT would
-    // be wrong, not safer. What is pinned here is the attempt-isolation path — the one that created
-    // worktrees in the wrong repository. Widening the vocabulary without first deciding which agent
-    // stands where would assert a rule the template should not follow.
-    //
-    // The anchor must name REPO_ROOT ITSELF, not merely be syntactically present: `git -C .` and
-    // `git -C $PWD` are anchors that protect nothing, and an assertion that accepted them would
-    // pass the exact bug this exists to catch.
-    gitDirectivesAreRepoAnchored:
-                   { find: (lens, n) => ({ candidates: n === 1 && lens === 'a' ? [{ where: 'src/a.rs:12', claim: 'x' }] : [] }),
-                     verify: id => pass(id),
-                     expect: (r, h) => {
-                       const work = h.prompts['work:src/a.rs:12'] || []
-                       const merge = h.prompts['merge'] || []
-                       // Only RUNNABLE commands. A bare `git merge` inside "never run `git merge`
-                       // yourself" is a reference, not an instruction, and cannot be executed as
-                       // written; flagging it would force prose to contort around the assertion.
-                       // Every form below carries the argument that makes it a command.
-                       const unanchored = /`git (worktree (add|remove)|merge --(no-ff|abort)|branch -D)/
-                       const anchored = /git -C \/fixture-repo-root /
-                       // BOTH channels are required non-empty and BOTH must carry the anchor. A
-                       // single combined array with a `.some` floor would let one channel lose every
-                       // git command while the other kept the clause true — and the `.every` would
-                       // then range vacuously over the stripped one. Same vacuous-truth shape this
-                       // file already got caught by once, in coherenceNeverDemandsACleanTree.
-                       return work.length > 0 && merge.length > 0 &&
-                         [...work, ...merge].every(p => !unanchored.test(p)) &&
-                         work.some(p => anchored.test(p)) &&
-                         merge.some(p => anchored.test(p)) } },
     // deadFinders' sibling, and the reason the guard reads `Array.isArray(r?.candidates)` rather than
     // `Boolean`: a lens that answers with ONE candidate instead of a list of them. It is truthy, the
     // panel looks complete so no gap is raised, and flatMap hands the object straight through as a
@@ -1405,6 +1357,69 @@ const SCENARIOS = {
                          .flatMap(k => h.prompts[k])
                        return vps.length >= 2 && vps.every(p =>
                          !p.includes('is itself a FAIL') && p.includes('done-criterion')) } },
+    // THE ATTEMPT-ISOLATION GIT COMMANDS MUST BE ANCHORED TO REPO_ROOT. `git worktree add` and `git
+    // merge` resolve against the AGENT'S CURRENT DIRECTORY, so an unanchored one operates on whatever
+    // repo the agent happens to be standing in — with exit 0, because a worktree created in the wrong
+    // repo is not an error. Measured: a run created all three of its attempt worktrees in the
+    // operator's own checkout rather than the configured clone, and nothing in this file caught it,
+    // because the prompt contained all the right WORDS. The directives said "(run from the shared
+    // tree)" and named the repo only in TARGET, which is prose the agent may or may not act on.
+    //
+    // Asserted over a BOUNDED VOCABULARY, which is what makes this cheap and paraphrase-proof: the
+    // anchored form is `git -C <root> <verb>`, so a backtick-git followed directly by any of the
+    // git verbs we emit is by construction unanchored. There is no wording that satisfies the
+    // negative while still being wrong — unlike a phrase-shape assertion, the flag is either
+    // between `git` and the verb or it is not.
+    //
+    // SCOPE. An earlier version of this comment excused the Coherence prompt from coverage on the
+    // grounds that its agent "runs inside a tree it was already sent to". THAT WAS FALSE, and review
+    // caught it: the Coherence prompt says in its own words "You are editing the SHARED tree directly
+    // (not a worktree — the attempts already merged)" and "Nothing else in this run commits the shared
+    // tree". It is the kernel's ONLY shared-tree commit, so it needed the anchor MORE than the
+    // worktree path did, not less — anchoring the attempts while leaving Coherence unanchored would
+    // land attempts correctly and then commit the reconciliation into the wrong repo. It is anchored
+    // now and this scenario reads its channel.
+    //
+    // Still NOT covered, deliberately: read-only git in the handoff/footprint and retry prompts, and
+    // `git rev-parse HEAD` in the board's hero directive, which is explicitly meant to run in the
+    // process that rendered the frame rather than in REPO_ROOT. A wrong-repo read mis-reports rather
+    // than mis-writes; it is a real gap and it is named here rather than papered over.
+    //
+    // The anchor must name REPO_ROOT ITSELF, not merely be syntactically present: `git -C .` and
+    // `git -C $PWD` are anchors that protect nothing, and an assertion that accepted them would
+    // pass the exact bug this exists to catch.
+    // Converger shape with TWO failing criteria, not the saturator's single find: `coherence` only
+    // runs when at least two items merged in a round, so a one-item fixture leaves that channel empty
+    // and the `coh.length > 0` floor below could never be met. The fixture has to actually exercise
+    // every channel the assertion claims to cover, or the coverage is nominal.
+    gitDirectivesAreRepoAnchored:
+                   { critique: () => CRIT(['fail', 'fail', 'pass']), verify: id => pass(id),
+                     expect: (r, h) => {
+                       const work = Object.keys(h.prompts || {})
+                         .filter(k => k.startsWith('work:')).flatMap(k => h.prompts[k] || [])
+                       const merge = h.prompts['merge'] || []
+                       const coh = h.prompts['coherence'] || []
+                       // Only RUNNABLE commands. A bare `git merge` inside "never run `git merge`
+                       // yourself" is a reference, not an instruction, and cannot be executed as
+                       // written; flagging it would force prose to contort around the assertion.
+                       // Every form below carries the argument that makes it a command.
+                       // Vocabulary widened after review measured `git branch -d` (lowercase) and the
+                       // Coherence writes at 0 FAILs. `add --` and not a bare `add`, because the same
+                       // prompt names `git add -A` and `git add .` in order to FORBID them — flagging
+                       // those would trip on the prohibition itself, which coherenceCommitsItsEdits
+                       // already pins separately.
+                       const unanchored = /`git (worktree (add|remove)|merge --(no-ff|abort)|branch -[dD]|add --|commit -m|checkout|reset)/
+                       const anchored = /git -C \/fixture-repo-root /
+                       // BOTH channels are required non-empty and BOTH must carry the anchor. A
+                       // single combined array with a `.some` floor would let one channel lose every
+                       // git command while the other kept the clause true — and the `.every` would
+                       // then range vacuously over the stripped one. Same vacuous-truth shape this
+                       // file already got caught by once, in coherenceNeverDemandsACleanTree.
+                       return work.length > 0 && merge.length > 0 && coh.length > 0 &&
+                         [...work, ...merge, ...coh].every(p => !unanchored.test(p)) &&
+                         work.some(p => anchored.test(p)) &&
+                         merge.some(p => anchored.test(p)) &&
+                         coh.some(p => anchored.test(p)) } },
     // THE RECONCILER'S EDITS MUST LAND. Coherence moved AFTER Merge (subtask 3) and edits the SHARED
     // tree — but nothing in the template commits the shared tree any more (the only write left is the
     // Merge agent's own `git merge`). So the reconciliation was discarded from HEAD every round, and
@@ -1425,7 +1440,10 @@ const SCENARIOS = {
                        // `!includes` would trip on the warning itself. Assert the shape instead: the
                        // scoped form is the instruction, and every mention of a blanket form is
                        // immediately prefaced by "never".
-                       p.includes('git add -- ') && p.includes('git commit') &&
+                       // Anchored forms required. Same incomparable-but-benign shape as
+                       // workerGetsWorktree: the old `includes('git add -- ')` matched the unanchored
+                       // command, which for the kernel's ONLY shared-tree commit was the dangerous one.
+                       /git -C \S+ add -- /.test(p) && /git -C \S+ commit/.test(p) &&
                        [...p.matchAll(/git add (?:-A|\.)/g)].every(m =>
                          /never\s*[`'"]?$/i.test(p.slice(Math.max(0, m.index - 12), m.index)))) },
     // THE OTHER HALF OF THE SAME PARAGRAPH, AND A DEFECT THE FIX ITSELF SHIPPED. Having just told the

@@ -532,7 +532,10 @@ const MODES = {
           ? `You are editing the SHARED tree directly (not a worktree — the attempts already merged). ` +
             `Nothing else in this run commits the shared tree, so COMMIT what you change here or it ` +
             `is lost — staging ONLY the files you yourself edited, BY NAME: ` +
-            `\`git add -- <each file you changed>\` then \`git commit -m "coherence: reconcile round"\`. ` +
+            `\`git -C ${REPO_ROOT} add -- <each file you changed>\` then ` +
+            `\`git -C ${REPO_ROOT} commit -m "coherence: reconcile round"\`. Both are anchored to ` +
+            `${REPO_ROOT} and must stay that way: this is the ONLY phase that commits the shared ` +
+            `tree, so an unanchored command here commits into whatever repo you are standing in. ` +
             `NEVER \`git add -A\` and never \`git add .\`: this run's own bookkeeping sits under ` +
             `${LEDGER_DIR}, each attempt worktree under it is an embedded git repository that a blanket ` +
             `add commits as a gitlink pointing at a branch that may not outlive the run (a dangling ` +
